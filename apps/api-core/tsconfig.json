@@ -1,0 +1,15 @@
+{
+  "extends": "@sparktrack/tsconfig/nestjs.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "baseUrl": "./",
+    "paths": {
+      "@intelligence/*": ["src/intelligence-core/*"],
+      "@platform/*": ["src/platform-modules/*"],
+      "@common/*": ["src/common/*"]
+    }
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "test"]
+}

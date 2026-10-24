@@ -1,0 +1,14 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-spark-50: #fffbeb;
+  --color-spark-100: #fef3c7;
+  --color-spark-400: #fbbf24;
+  --color-spark-500: #f59e0b;
+  --color-spark-600: #d97706;
+  --color-spark-800: #92400e;
+  --color-spark-900: #78350f;
+}
+
+body { font-family: system-ui, sans-serif; }
+

@@ -1,0 +1,11 @@
+{
+  "name": "SparkTrack",
+  "short_name": "SparkTrack",
+  "description": "Intelligence-driven early talent development",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#f59e0b",
+  "icons": []
+}
+

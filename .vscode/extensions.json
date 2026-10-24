@@ -1,0 +1,10 @@
+{
+  "recommendations": [
+    "google.antigravity",
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "bradlc.vscode-tailwindcss",
+    "ckolkman.vscode-postgres",
+    "ms-azuretools.vscode-docker"
+  ]
+}

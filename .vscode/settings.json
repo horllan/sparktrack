@@ -1,0 +1,15 @@
+{
+  "editor.formatOnSave": true,
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "files.associations": {
+    "*.sql": "postgres"
+  },
+  "antigravity.agent.rulesFile": ".antigravity/rules.md",
+  "antigravity.mcp.configFile": ".antigravity/mcp.json",
+  "antigravity.knowledge.contextPaths": [
+    "docs/SPARKTRACK_MASTER_BLUEPRINT_V2.md",
+    "docs/ANTIGRAVITY_AGENT_PROMPTS.md",
+    "packages/db/migrations/0001_sparktrack_core_architecture.sql",
+    "packages/db/migrations/0002_seed_capability_graph.sql"
+  ]
+}
