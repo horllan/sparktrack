@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { SyncEngine } from '@sparktrack/offline-sync';
 import type { BehaviouralSignal } from '@sparktrack/contracts';
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input } from '@sparktrack/ui';
@@ -19,9 +19,25 @@ const SIGNALS: Array<{ key: BehaviouralSignal; label: string }> = [
   { key: 'initiative', label: 'Initiative' },
 ];
 
+interface QueueItem {
+  artifactId: string;
+  learnerId: string;
+  learnerName: string;
+  educationStage: string;
+  artifactType: string;
+  title: string;
+  description: string | null;
+  skillCodes: string[];
+  complexityWeight: number;
+  capturedOfflineAt: string;
+  ledgerSeq: number | null;
+  rowSignatureHash: string | null;
+}
+
 export default function MentorDashboardPage() {
+  const [queue, setQueue] = useState<QueueItem[]>([]);
   const [learnerId, setLearnerId] = useState('');
-  const [cohortId, setCohortId] = useState('');
+  const [cohortId, setCohortId] = useState('00000000-0000-0000-0000-000000000001');
   const [artifactId, setArtifactId] = useState('');
   const [qualityScore, setQualityScore] = useState('0.90');
   const [overallComment, setOverallComment] = useState('');
@@ -45,6 +61,19 @@ export default function MentorDashboardPage() {
     [],
   );
 
+  const loadQueue = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_URL}/v1/mentorship/queue`);
+      if (res.ok) setQueue((await res.json()) as QueueItem[]);
+    } catch {
+      // Offline-safe: queue is optional when mentor is working offline
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadQueue();
+  }, [loadQueue]);
+
   function toggleSignal(sig: BehaviouralSignal) {
     setSelectedSignals((prev) => {
       const next = { ...prev };
@@ -65,6 +94,7 @@ export default function MentorDashboardPage() {
     try {
       const { data } = await createClient().auth.getSession();
       const mentorId = data.session?.user?.id;
+      const token = data.session?.access_token;
       if (!mentorId) throw new Error('Sign in with a Mentor account to submit a micro-rubric.');
 
       const observedSignals = Object.entries(selectedSignals).map(([signal, intensity]) => ({
@@ -72,6 +102,14 @@ export default function MentorDashboardPage() {
         intensity,
       }));
       if (observedSignals.length === 0) throw new Error('Select at least one behavioural signal.');
+
+      if (artifactId.trim() && token) {
+        await fetch(`${API_URL}/v1/mentorship/artifacts/${artifactId.trim()}/verify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ qualityScore: Number(qualityScore) }),
+        }).catch(() => null);
+      }
 
       await syncEngine.queueRubric({
         clientSyncId: crypto.randomUUID(),
@@ -85,6 +123,7 @@ export default function MentorDashboardPage() {
         capturedOfflineAt: new Date().toISOString(),
       });
       await syncEngine.syncAll();
+      await loadQueue();
       setNotice('Micro-rubric queued in IndexedDB and synced to the cryptographic evidence ledger.');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to submit micro-rubric.');
@@ -95,16 +134,58 @@ export default function MentorDashboardPage() {
 
   return (
     <main className="min-h-screen bg-slate-50 p-6">
-      <div className="mx-auto max-w-4xl space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Mentor 3-Minute Mobile-Offline Micro-Rubric</h1>
-          <p className="text-sm text-slate-600">
-            Verify learner artifacts and record evolving developmental signals (offline-first via IndexedDB).
-          </p>
+      <div className="mx-auto max-w-5xl space-y-6">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900">Mentor 3-Minute Mobile-Offline Micro-Rubric</h1>
+            <p className="text-sm text-slate-600">
+              Verify learner artifacts and record evolving developmental signals (offline-first via IndexedDB).
+            </p>
+          </div>
+          <Button variant="outline" onClick={() => void loadQueue()}>
+            Refresh Pending Queue ({queue.length})
+          </Button>
         </div>
 
         {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
         {notice && <p role="status" className="rounded-lg bg-green-50 p-3 text-sm text-green-800">{notice}</p>}
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Pending Learner Artifact Verification Queue</CardTitle>
+            <CardDescription>Click any unverified submission to load its Learner &amp; Artifact UUIDs into the evaluator.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {queue.length === 0 ? (
+              <p className="text-sm text-slate-500">All submitted artifacts have been verified by a mentor.</p>
+            ) : (
+              queue.map((item) => (
+                <div
+                  key={item.artifactId}
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-3 text-sm"
+                >
+                  <div>
+                    <p className="font-medium text-slate-900">
+                      {item.title} <span className="text-xs text-slate-500">({item.learnerName} • {item.educationStage})</span>
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      Skills: {item.skillCodes.join(', ') || 'None'} • Ledger #{item.ledgerSeq ?? '—'}
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setLearnerId(item.learnerId);
+                      setArtifactId(item.artifactId);
+                    }}
+                  >
+                    Load into Evaluator
+                  </Button>
+                </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader>

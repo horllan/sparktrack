@@ -531,3 +531,448 @@ export const learningQueries = {
     }));
   },
 };
+
+export const mentorshipQueries = {
+  async pendingQueue(db: Db, limit = 25) {
+    const r = await sql<{
+      artifact_id: string;
+      learner_id: string;
+      learner_name: string;
+      education_stage: string;
+      artifact_type: string;
+      title: string;
+      description: string | null;
+      skill_codes: string[];
+      complexity_weight: string;
+      captured_offline_at: Date;
+      ledger_seq: string | null;
+      row_signature_hash: string | null;
+    }>`
+      SELECT
+        a.id AS artifact_id,
+        a.learner_id,
+        u.full_name AS learner_name,
+        lp.education_stage,
+        a.artifact_type::text,
+        a.title,
+        a.description,
+        COALESCE(ARRAY(SELECT jsonb_array_elements_text(a.payload->'skill_codes')), '{}') AS skill_codes,
+        a.complexity_weight::text,
+        a.captured_offline_at,
+        cl.ledger_seq::text,
+        cl.row_signature_hash
+      FROM evidence.artifacts a
+      JOIN core.learner_profiles lp ON lp.learner_id = a.learner_id
+      JOIN core.users u ON u.id = a.learner_id
+      LEFT JOIN evidence.cryptographic_ledger cl ON cl.artifact_id = a.id
+      WHERE a.mentor_verifier_id IS NULL
+      ORDER BY a.captured_offline_at DESC
+      LIMIT ${limit}
+    `.execute(db);
+
+    return r.rows.map((row) => ({
+      artifactId: row.artifact_id,
+      learnerId: row.learner_id,
+      learnerName: row.learner_name,
+      educationStage: row.education_stage,
+      artifactType: row.artifact_type,
+      title: row.title,
+      description: row.description,
+      skillCodes: row.skill_codes ?? [],
+      complexityWeight: Number(row.complexity_weight),
+      capturedOfflineAt: row.captured_offline_at.toISOString(),
+      ledgerSeq: row.ledger_seq !== null ? Number(row.ledger_seq) : null,
+      rowSignatureHash: row.row_signature_hash,
+    }));
+  },
+
+  async verifyArtifact(
+    db: Db,
+    p: { artifactId: string; mentorId: string; mentorName?: string; qualityScore: number },
+  ) {
+    return db.transaction().execute(async (trx) => {
+      await sql`
+        INSERT INTO core.users (id, role, full_name)
+        VALUES (${p.mentorId}::uuid, 'MENTOR'::core.user_role, ${p.mentorName ?? 'SparkTrack Mentor'})
+        ON CONFLICT (id) DO NOTHING
+      `.execute(trx);
+
+      const updated = await sql<{ id: string; learner_id: string }>`
+        UPDATE evidence.artifacts
+        SET mentor_verifier_id = ${p.mentorId}::uuid,
+            quality_score = ${p.qualityScore}
+        WHERE id = ${p.artifactId}::uuid
+        RETURNING id, learner_id
+      `.execute(trx);
+
+      const row = updated.rows[0];
+      if (!row) return null;
+      return { artifactId: row.id, learnerId: row.learner_id };
+    });
+  },
+
+  async assignMentor(
+    db: Db,
+    p: { mentorId: string; mentorName?: string; cohortId: string; learnerId?: string | null },
+  ) {
+    return db.transaction().execute(async (trx) => {
+      await sql`
+        INSERT INTO core.users (id, role, full_name)
+        VALUES (${p.mentorId}::uuid, 'MENTOR'::core.user_role, ${p.mentorName ?? 'SparkTrack Mentor'})
+        ON CONFLICT (id) DO NOTHING
+      `.execute(trx);
+
+      const ins = await sql<{ id: string }>`
+        INSERT INTO core.mentor_assignments (mentor_id, cohort_id, learner_id, is_active)
+        VALUES (${p.mentorId}::uuid, ${p.cohortId}::uuid, ${p.learnerId ?? null}::uuid, TRUE)
+        ON CONFLICT (mentor_id, cohort_id, COALESCE(learner_id, '00000000-0000-0000-0000-000000000000'::uuid))
+        DO UPDATE SET is_active = TRUE
+        RETURNING id
+      `.execute(trx);
+
+      return { assignmentId: ins.rows[0]!.id };
+    });
+  },
+};
+
+export const billingQueries = {
+  async listCohorts(db: Db) {
+    const r = await sql<{
+      id: string;
+      organisation_id: string | null;
+      organisation_name: string | null;
+      title: string;
+      description: string | null;
+      programme_type: string;
+      start_date: string;
+      end_date: string;
+      max_capacity: number;
+      current_enrolment_count: number;
+      price_ngn: number | null;
+      price_usd: number | null;
+      is_active: boolean;
+    }>`
+      SELECT
+        c.id,
+        c.organisation_id,
+        o.name AS organisation_name,
+        c.title,
+        c.description,
+        c.programme_type::text,
+        c.start_date::text,
+        c.end_date::text,
+        c.max_capacity,
+        c.current_enrolment_count,
+        c.price_ngn,
+        c.price_usd,
+        c.is_active
+      FROM core.programme_cohorts c
+      LEFT JOIN core.organisations o ON o.id = c.organisation_id
+      ORDER BY c.start_date DESC, c.created_at DESC
+    `.execute(db);
+
+    return r.rows.map((row) => ({
+      id: row.id,
+      organisationId: row.organisation_id,
+      organisationName: row.organisation_name,
+      title: row.title,
+      description: row.description,
+      programmeType: row.programme_type,
+      startDate: row.start_date,
+      endDate: row.end_date,
+      maxCapacity: row.max_capacity,
+      currentEnrolmentCount: row.current_enrolment_count,
+      priceNgn: row.price_ngn,
+      priceUsd: row.price_usd,
+      isActive: row.is_active,
+    }));
+  },
+
+  async createCohort(
+    db: Db,
+    p: {
+      organisationId?: string | null;
+      title: string;
+      description?: string;
+      programmeType: 'HOLIDAY_CAMP' | 'SCHOOL_TERM_COCURRICULAR' | 'WEEKEND_WORKSHOP' | 'ONLINE_COHORT';
+      startDate: string;
+      endDate: string;
+      maxCapacity: number;
+      priceNgn?: number | null;
+      priceUsd?: number | null;
+    },
+  ) {
+    const r = await sql<{ id: string }>`
+      INSERT INTO core.programme_cohorts (
+        organisation_id, title, description, programme_type,
+        start_date, end_date, max_capacity, price_ngn, price_usd
+      )
+      VALUES (
+        ${p.organisationId ?? null}::uuid,
+        ${p.title},
+        ${p.description ?? null},
+        ${p.programmeType}::core.programme_type,
+        ${p.startDate}::date,
+        ${p.endDate}::date,
+        ${p.maxCapacity},
+        ${p.priceNgn ?? null},
+        ${p.priceUsd ?? null}
+      )
+      RETURNING id
+    `.execute(db);
+    return { cohortId: r.rows[0]!.id };
+  },
+
+  async enrolLearner(
+    db: Db,
+    p: {
+      learnerId: string;
+      cohortId: string;
+      paymentProvider: 'PAYSTACK' | 'STRIPE' | 'INSTITUTIONAL_INVOICE' | 'SCHOLARSHIP' | 'FREE_PILOT';
+      paymentReference?: string | null;
+      paymentAmount?: number | null;
+      paymentCurrency?: string;
+      scholarshipTag?: string | null;
+    },
+  ) {
+    return db.transaction().execute(async (trx) => {
+      const immediate = p.paymentProvider === 'FREE_PILOT' || p.paymentProvider === 'SCHOLARSHIP';
+      const status = immediate ? 'ACTIVE' : 'PENDING_PAYMENT';
+
+      const existing = await sql<{ id: string; enrolment_status: string }>`
+        SELECT id, enrolment_status::text
+        FROM core.cohort_enrolments
+        WHERE learner_id = ${p.learnerId}::uuid AND cohort_id = ${p.cohortId}::uuid
+        FOR UPDATE
+      `.execute(trx);
+
+      if (existing.rows[0]) {
+        return {
+          enrolmentId: existing.rows[0].id,
+          enrolmentStatus: existing.rows[0].enrolment_status,
+          alreadyEnrolled: true,
+        };
+      }
+
+      const ins = await sql<{ id: string; enrolment_status: string }>`
+        INSERT INTO core.cohort_enrolments (
+          learner_id, cohort_id, enrolment_status, payment_provider,
+          payment_reference, payment_amount, payment_currency, scholarship_tag
+        )
+        VALUES (
+          ${p.learnerId}::uuid,
+          ${p.cohortId}::uuid,
+          ${status}::core.enrolment_status,
+          ${p.paymentProvider}::core.payment_provider,
+          ${p.paymentReference ?? null},
+          ${p.paymentAmount ?? null},
+          ${p.paymentCurrency ?? 'NGN'},
+          ${p.scholarshipTag ?? null}
+        )
+        RETURNING id, enrolment_status::text
+      `.execute(trx);
+
+      if (immediate) {
+        await sql`
+          UPDATE core.programme_cohorts
+          SET current_enrolment_count = current_enrolment_count + 1,
+              updated_at = NOW()
+          WHERE id = ${p.cohortId}::uuid
+        `.execute(trx);
+      }
+
+      return {
+        enrolmentId: ins.rows[0]!.id,
+        enrolmentStatus: ins.rows[0]!.enrolment_status,
+        alreadyEnrolled: false,
+      };
+    });
+  },
+
+  async confirmPaymentByReference(
+    db: Db,
+    p: {
+      paymentProvider: 'PAYSTACK' | 'STRIPE';
+      paymentReference: string;
+      paymentAmount?: number;
+    },
+  ) {
+    return db.transaction().execute(async (trx) => {
+      const cur = await sql<{
+        id: string;
+        learner_id: string;
+        cohort_id: string;
+        enrolment_status: string;
+      }>`
+        SELECT id, learner_id, cohort_id, enrolment_status::text
+        FROM core.cohort_enrolments
+        WHERE payment_provider = ${p.paymentProvider}::core.payment_provider
+          AND payment_reference = ${p.paymentReference}
+        FOR UPDATE
+      `.execute(trx);
+
+      const row = cur.rows[0];
+      if (!row) return { status: 'not_found' as const };
+      if (row.enrolment_status === 'ACTIVE' || row.enrolment_status === 'CONFIRMED') {
+        return {
+          status: 'already_processed' as const,
+          enrolmentId: row.id,
+          learnerId: row.learner_id,
+          cohortId: row.cohort_id,
+        };
+      }
+
+      await sql`
+        UPDATE core.cohort_enrolments
+        SET enrolment_status = 'ACTIVE'::core.enrolment_status,
+            payment_amount = COALESCE(${p.paymentAmount ?? null}, payment_amount)
+        WHERE id = ${row.id}::uuid
+      `.execute(trx);
+
+      await sql`
+        UPDATE core.programme_cohorts
+        SET current_enrolment_count = current_enrolment_count + 1,
+            updated_at = NOW()
+        WHERE id = ${row.cohort_id}::uuid
+      `.execute(trx);
+
+      return {
+        status: 'activated' as const,
+        enrolmentId: row.id,
+        learnerId: row.learner_id,
+        cohortId: row.cohort_id,
+      };
+    });
+  },
+};
+
+export const institutionQueries = {
+  async analyticsSummary(db: Db) {
+    const [counts, skills, talentPool, orgs] = await Promise.all([
+      sql<{
+        total_learners: string;
+        verified_learners: string;
+        sealed_artifacts: string;
+        active_cohorts: string;
+      }>`
+        SELECT
+          (SELECT COUNT(*)::text FROM core.learner_profiles) AS total_learners,
+          (SELECT COUNT(*)::text FROM core.learner_profiles WHERE consent_status = 'VERIFIED_ACTIVE') AS verified_learners,
+          (SELECT COUNT(*)::text FROM evidence.cryptographic_ledger) AS sealed_artifacts,
+          (SELECT COUNT(*)::text FROM core.programme_cohorts WHERE is_active = TRUE) AS active_cohorts
+      `.execute(db),
+      sql<{
+        code: string;
+        name: string;
+        category: string | null;
+        learner_count: string;
+        avg_score: string;
+      }>`
+        SELECT
+          n.code,
+          n.name,
+          n.category::text,
+          COUNT(DISTINCT t.learner_id)::text AS learner_count,
+          ROUND(AVG(t.computed_score), 4)::text AS avg_score
+        FROM intelligence.learner_capability_temporal t
+        JOIN intelligence.graph_nodes n ON n.id = t.node_id
+        WHERE upper_inf(t.valid_period) AND n.node_type = 'SKILL'
+        GROUP BY n.code, n.name, n.category
+        ORDER BY AVG(t.computed_score) DESC
+      `.execute(db),
+      sql<{
+        learner_id: string;
+        education_stage: string;
+        school_name: string | null;
+        declared_interests: string[];
+        verified_artifacts: string;
+        top_skills: Array<{ skill: string; level: string; score: number }> | null;
+      }>`
+        SELECT
+          lp.learner_id,
+          lp.education_stage,
+          o.name AS school_name,
+          lp.declared_interests,
+          COUNT(DISTINCT a.id)::text AS verified_artifacts,
+          JSONB_AGG(
+            DISTINCT JSONB_BUILD_OBJECT(
+              'skill', gn.name,
+              'level', lct.progression_state,
+              'score', lct.computed_score
+            )
+          ) FILTER (WHERE gn.node_type = 'SKILL' AND upper_inf(lct.valid_period)) AS top_skills
+        FROM core.learner_profiles lp
+        LEFT JOIN core.organisations o ON o.id = lp.current_school_id
+        LEFT JOIN evidence.artifacts a ON a.learner_id = lp.learner_id
+        LEFT JOIN intelligence.learner_capability_temporal lct
+          ON lct.learner_id = lp.learner_id AND upper_inf(lct.valid_period)
+        LEFT JOIN intelligence.graph_nodes gn ON gn.id = lct.node_id
+        WHERE lp.consent_status = 'VERIFIED_ACTIVE'
+          AND lp.allow_partner_talent_discovery = TRUE
+        GROUP BY lp.learner_id, lp.education_stage, o.name, lp.declared_interests
+        ORDER BY COUNT(DISTINCT a.id) DESC
+        LIMIT 25
+      `.execute(db),
+      sql<{
+        id: string;
+        name: string;
+        org_type: string;
+        country_code: string;
+        subscription_tier: string;
+      }>`
+        SELECT id, name, org_type, country_code, subscription_tier
+        FROM core.organisations
+        ORDER BY created_at DESC
+      `.execute(db),
+    ]);
+
+    const c = counts.rows[0]!;
+    return {
+      totals: {
+        totalLearners: Number(c.total_learners),
+        verifiedConsentLearners: Number(c.verified_learners),
+        sealedArtifacts: Number(c.sealed_artifacts),
+        activeCohorts: Number(c.active_cohorts),
+      },
+      skillDistribution: skills.rows.map((s) => ({
+        code: s.code,
+        name: s.name,
+        category: s.category,
+        learnerCount: Number(s.learner_count),
+        averageScore: Number(s.avg_score),
+      })),
+      optInTalentPool: talentPool.rows.map((t) => ({
+        learnerId: t.learner_id,
+        educationStage: t.education_stage,
+        schoolName: t.school_name,
+        declaredInterests: t.declared_interests ?? [],
+        verifiedArtifacts: Number(t.verified_artifacts),
+        topSkills: t.top_skills ?? [],
+      })),
+      organisations: orgs.rows.map((o) => ({
+        id: o.id,
+        name: o.name,
+        orgType: o.org_type,
+        countryCode: o.country_code,
+        subscriptionTier: o.subscription_tier,
+      })),
+    };
+  },
+
+  async createOrganisation(
+    db: Db,
+    p: {
+      name: string;
+      orgType: 'SCHOOL' | 'NGO' | 'TRAINING_PROVIDER' | 'EMPLOYER' | 'GOVERNMENT';
+      countryCode?: string;
+      subscriptionTier?: string;
+    },
+  ) {
+    const r = await sql<{ id: string }>`
+      INSERT INTO core.organisations (name, org_type, country_code, subscription_tier)
+      VALUES (${p.name}, ${p.orgType}, ${p.countryCode ?? 'NG'}, ${p.subscriptionTier ?? 'FREE_PILOT'})
+      RETURNING id
+    `.execute(db);
+    return { organisationId: r.rows[0]!.id };
+  },
+};
