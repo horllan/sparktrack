@@ -15,6 +15,8 @@ export const badgeVariants = cva(
         developing: 'border-transparent bg-blue-100 text-blue-800',
         competent: 'border-transparent bg-green-100 text-green-800',
         advanced: 'border-transparent bg-purple-100 text-purple-800',
+        success: 'border-transparent bg-emerald-100 text-emerald-800',
+        warning: 'border-transparent bg-amber-100 text-amber-800',
       },
     },
     defaultVariants: { variant: 'default' },
