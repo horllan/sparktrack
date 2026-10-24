@@ -150,6 +150,35 @@ export const graphQueries = {
       JOIN intelligence.graph_nodes t ON t.id = e.target_node_id`.execute(db);
     return r.rows.map((x) => ({ ...x, weight: Number(x.weight) }));
   },
+
+  async fullTopology(db: Db) {
+    const [nodes, edges] = await Promise.all([
+      sql<{
+        id: string;
+        node_type: string;
+        code: string;
+        name: string;
+        category: string | null;
+        description: string;
+      }>`
+        SELECT id, node_type::text, code, name, category::text, description
+        FROM intelligence.graph_nodes
+        ORDER BY node_type, name
+      `.execute(db),
+      graphQueries.edgesWithNodes(db),
+    ]);
+    return {
+      nodes: nodes.rows.map((n) => ({
+        id: n.id,
+        nodeType: n.node_type,
+        code: n.code,
+        name: n.name,
+        category: n.category,
+        description: n.description,
+      })),
+      edges,
+    };
+  },
 };
 
 /** Evidence read model for the Skill Engine. Convention: artifact.payload.skill_codes = string[]. */
@@ -419,6 +448,72 @@ export const consentQueries = {
       `.execute(trx);
       return { status: p.consentGiven ? 'verified' as const : 'declined' as const };
     });
+  },
+
+  async getPreferences(db: Db, learnerId: string) {
+    const r = await sql<{
+      learner_id: string;
+      consent_status: string;
+      consent_verified_at: Date | null;
+      allow_public_portfolio: boolean;
+      allow_partner_talent_discovery: boolean;
+    }>`
+      SELECT
+        learner_id,
+        consent_status::text,
+        consent_verified_at,
+        allow_public_portfolio,
+        allow_partner_talent_discovery
+      FROM core.learner_profiles
+      WHERE learner_id = ${learnerId}::uuid
+    `.execute(db);
+    const row = r.rows[0];
+    if (!row) return null;
+    return {
+      learnerId: row.learner_id,
+      consentStatus: row.consent_status,
+      consentVerifiedAt: row.consent_verified_at ? row.consent_verified_at.toISOString() : null,
+      allowPublicPortfolio: row.allow_public_portfolio,
+      allowPartnerTalentDiscovery: row.allow_partner_talent_discovery,
+    };
+  },
+
+  async updatePreferences(
+    db: Db,
+    p: {
+      learnerId: string;
+      consentStatus: 'VERIFIED_ACTIVE' | 'RESTRICTED_INTERNAL_ONLY' | 'REVOKED';
+      allowPublicPortfolio: boolean;
+      allowPartnerTalentDiscovery: boolean;
+    },
+  ) {
+    const isVerified = p.consentStatus === 'VERIFIED_ACTIVE';
+    const allowPublic = isVerified && p.allowPublicPortfolio;
+    const allowPartner = isVerified && p.allowPartnerTalentDiscovery;
+
+    const r = await sql<{
+      learner_id: string;
+      consent_status: string;
+      allow_public_portfolio: boolean;
+      allow_partner_talent_discovery: boolean;
+    }>`
+      UPDATE core.learner_profiles
+      SET consent_status = ${p.consentStatus}::core.consent_status,
+          allow_public_portfolio = ${allowPublic},
+          allow_partner_talent_discovery = ${allowPartner},
+          updated_at = NOW()
+      WHERE learner_id = ${p.learnerId}::uuid
+      RETURNING learner_id, consent_status::text, allow_public_portfolio, allow_partner_talent_discovery
+    `.execute(db);
+
+    const row = r.rows[0];
+    if (!row) return null;
+    return {
+      learnerId: row.learner_id,
+      consentStatus: row.consent_status,
+      allowPublicPortfolio: row.allow_public_portfolio,
+      allowPartnerTalentDiscovery: row.allow_partner_talent_discovery,
+    };
   },
 };
 
@@ -1024,5 +1119,67 @@ export const institutionQueries = {
       RETURNING id
     `.execute(db);
     return { organisationId: r.rows[0]!.id };
+  },
+
+  async refreshMaterializedSummary(db: Db) {
+    await sql`REFRESH MATERIALIZED VIEW CONCURRENTLY analytics.mv_learner_development_summary`.execute(db);
+    const r = await sql<{
+      learner_id: string;
+      full_name: string;
+      education_stage: string;
+      declared_interests: string[];
+      total_verified_artifacts: string;
+      active_skills_snapshot: unknown;
+      last_evidence_date: Date | null;
+    }>`
+      SELECT
+        learner_id,
+        full_name,
+        education_stage,
+        declared_interests,
+        total_verified_artifacts::text,
+        active_skills_snapshot,
+        last_evidence_date
+      FROM analytics.mv_learner_development_summary
+      ORDER BY total_verified_artifacts DESC
+      LIMIT 50
+    `.execute(db);
+
+    return r.rows.map((row) => ({
+      learnerId: row.learner_id,
+      fullName: row.full_name,
+      educationStage: row.education_stage,
+      declaredInterests: row.declared_interests ?? [],
+      totalVerifiedArtifacts: Number(row.total_verified_artifacts),
+      activeSkillsSnapshot: row.active_skills_snapshot,
+      lastEvidenceDate: row.last_evidence_date ? row.last_evidence_date.toISOString() : null,
+    }));
+  },
+};
+
+export const telemetryQueries = {
+  async recordEvent(
+    db: Db,
+    p: {
+      learnerId: string;
+      eventType: string;
+      durationSeconds?: number;
+      metadata?: Record<string, unknown>;
+    },
+  ) {
+    const r = await sql<{ id: string; recorded_at: Date }>`
+      INSERT INTO analytics.learning_telemetry (learner_id, event_type, duration_seconds, metadata)
+      VALUES (
+        ${p.learnerId}::uuid,
+        ${p.eventType},
+        ${p.durationSeconds ?? 0},
+        ${JSON.stringify(p.metadata ?? {})}::jsonb
+      )
+      RETURNING id, recorded_at
+    `.execute(db);
+    return {
+      telemetryId: r.rows[0]!.id,
+      recordedAt: r.rows[0]!.recorded_at.toISOString(),
+    };
   },
 };

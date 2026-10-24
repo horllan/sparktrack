@@ -11,5 +11,5 @@ export class CapabilityGraphService {
   traverse(startNodeIds: string[], maxDepth = 4) { return graphQueries.traverse(this.db, startNodeIds, maxDepth); }
   similar(embedding: number[], limit = 10) { return graphQueries.similar(this.db, embedding, limit); }
   edges() { return graphQueries.edgesWithNodes(this.db); }
+  topology() { return graphQueries.fullTopology(this.db); }
 }
-

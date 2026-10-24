@@ -22,8 +22,33 @@ interface Cohort {
   isActive: boolean;
 }
 
+interface GraphTopology {
+  nodes: Array<{
+    id: string;
+    nodeType: string;
+    code: string;
+    name: string;
+    category: string | null;
+    description: string;
+  }>;
+  edges: Array<{
+    sourceId: string;
+    sourceCode: string;
+    sourceName: string;
+    sourceType: string;
+    targetId: string;
+    targetCode: string;
+    targetName: string;
+    targetType: string;
+    relationshipType: string;
+    contributionWeight: number;
+    isRequired: boolean;
+  }>;
+}
+
 export default function AdminDashboardPage() {
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
+  const [topology, setTopology] = useState<GraphTopology | null>(null);
   const [orgName, setOrgName] = useState('');
   const [orgType, setOrgType] = useState<'SCHOOL' | 'NGO' | 'TRAINING_PROVIDER' | 'EMPLOYER' | 'GOVERNMENT'>('SCHOOL');
 
@@ -68,6 +93,12 @@ export default function AdminDashboardPage() {
 
   useEffect(() => {
     void loadCohorts();
+    fetch(`${API_URL}/v1/graph/topology`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data) setTopology(data as GraphTopology);
+      })
+      .catch(() => null);
   }, [loadCohorts]);
 
   async function createOrganisation() {
@@ -351,6 +382,28 @@ export default function AdminDashboardPage() {
             )}
           </CardContent>
         </Card>
+
+        {topology && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">
+                Capability Graph Topology Inspector ({topology.nodes.length} Nodes • {topology.edges.length} Weighted Edges)
+              </CardTitle>
+              <CardDescription>
+                Multi-hop DAG mapping Activities → Skills → Capabilities → Career &amp; Entrepreneurship Pathways.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex flex-wrap gap-2">
+                {topology.nodes.map((node) => (
+                  <Badge key={node.id} variant="outline">
+                    [{node.nodeType}] {node.name}
+                  </Badge>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </main>
   );

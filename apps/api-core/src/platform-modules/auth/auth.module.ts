@@ -1,11 +1,25 @@
-import { Body, Controller, Get, Module, Post } from '@nestjs/common';
+import { Body, Controller, Get, Inject, Module, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { LearnerOnboardingSchema, ConsentVerificationSchema } from '@sparktrack/contracts';
+import { ledgerQueries, type SparkTrackDatabase } from '@sparktrack/db';
+import type { Kysely } from 'kysely';
+import { z } from 'zod';
 import {
-  AllowUnprovisionedLearner, CurrentUser, Public, Roles, type AuthUser,
+  AllowUnprovisionedLearner,
+  CurrentUser,
+  Public,
+  Roles,
+  type AuthUser,
 } from '../../common/auth/auth.guard';
+import { KYSELY } from '../../common/database/database.module';
 import { AuthPlatformService } from './auth-platform.service';
 import { TermiiSmsService } from './termii-sms.service';
+
+const UpdateConsentPreferencesSchema = z.object({
+  consentStatus: z.enum(['VERIFIED_ACTIVE', 'RESTRICTED_INTERNAL_ONLY', 'REVOKED']),
+  allowPublicPortfolio: z.boolean(),
+  allowPartnerTalentDiscovery: z.boolean(),
+});
 
 @ApiTags('auth')
 @ApiBearerAuth()
@@ -40,15 +54,42 @@ class AuthController {
   verifyConsent(@Body() body: unknown) {
     return this.auth.verifyConsent(ConsentVerificationSchema.parse(body));
   }
+
+  @Public()
+  @Get('consent/preferences/:learnerId')
+  @ApiOperation({ summary: 'Get current NDPA parental consent status and privacy flags for a learner' })
+  getConsentPreferences(@Param('learnerId', ParseUUIDPipe) learnerId: string) {
+    return this.auth.getConsentPreferences(learnerId);
+  }
+
+  @Patch('consent/preferences/:learnerId')
+  @ApiOperation({ summary: 'Update guardian privacy toggles or revoke consent (NDPA 2023 compliance)' })
+  updateConsentPreferences(
+    @CurrentUser() user: AuthUser,
+    @Param('learnerId', ParseUUIDPipe) learnerId: string,
+    @Body() body: unknown,
+  ) {
+    return this.auth.updateConsentPreferences(user, learnerId, UpdateConsentPreferencesSchema.parse(body));
+  }
 }
 
 @ApiTags('health')
 @Controller('health')
 class HealthController {
+  constructor(@Inject(KYSELY) private readonly db: Kysely<SparkTrackDatabase>) {}
+
   @Public()
   @Get()
-  ok() {
-    return { status: 'ok' };
+  @ApiOperation({ summary: 'Readiness & cryptographic ledger health check' })
+  async ok() {
+    const chain = await ledgerQueries.verifyChain(this.db);
+    return {
+      status: 'ok',
+      database: 'connected',
+      ledgerBlocks: chain.length,
+      ledgerIntegrityValid: chain.every((entry) => entry.isValid),
+      timestamp: new Date().toISOString(),
+    };
   }
 }
 

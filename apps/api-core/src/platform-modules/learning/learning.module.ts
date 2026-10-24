@@ -2,7 +2,7 @@ import { createHmac, randomUUID } from 'node:crypto';
 import { Body, Controller, ForbiddenException, Get, Inject, Module, NotFoundException, Param, ParseUUIDPipe, Post } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { institutionQueries, learningQueries, ledgerQueries, type SparkTrackDatabase } from '@sparktrack/db';
+import { institutionQueries, learningQueries, ledgerQueries, telemetryQueries, type SparkTrackDatabase } from '@sparktrack/db';
 import type { Kysely } from 'kysely';
 import { z } from 'zod';
 import { CurrentUser, LearnerAccessService, Public, type AuthUser } from '../../common/auth/auth.guard';
@@ -19,6 +19,13 @@ const PresignUploadSchema = z.object({
   learnerId: z.string().uuid(),
   fileName: z.string().min(1).max(180),
   contentType: z.string().min(3).max(120),
+});
+
+const RecordTelemetrySchema = z.object({
+  learnerId: z.string().uuid(),
+  eventType: z.string().min(2).max(80),
+  durationSeconds: z.number().int().nonnegative().max(86_400).optional(),
+  metadata: z.record(z.unknown()).optional(),
 });
 
 @ApiTags('learning')
@@ -93,6 +100,22 @@ class LearningController {
   createOrganisation(@Body() body: unknown) {
     const parsed = CreateOrganisationSchema.parse(body);
     return institutionQueries.createOrganisation(this.db, parsed);
+  }
+
+  @Public()
+  @Post('institutions/refresh-summary')
+  @ApiOperation({ summary: 'Concurrently refresh analytics.mv_learner_development_summary materialized view' })
+  refreshMaterializedSummary() {
+    return institutionQueries.refreshMaterializedSummary(this.db);
+  }
+
+  @ApiBearerAuth()
+  @Post('telemetry')
+  @ApiOperation({ summary: 'Record a learning telemetry event into range-partitioned analytics.learning_telemetry' })
+  async recordTelemetry(@CurrentUser() user: AuthUser, @Body() body: unknown) {
+    const parsed = RecordTelemetrySchema.parse(body);
+    await this.access.assertCanAccess(user, parsed.learnerId);
+    return telemetryQueries.recordEvent(this.db, parsed);
   }
 
   @ApiBearerAuth()

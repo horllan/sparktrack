@@ -20,6 +20,9 @@ export function Navbar() {
 
   useEffect(() => {
     setOnline(typeof navigator !== 'undefined' ? navigator.onLine : true);
+    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(() => null);
+    }
     const onOnline = () => setOnline(true);
     const onOffline = () => setOnline(false);
     window.addEventListener('online', onOnline);

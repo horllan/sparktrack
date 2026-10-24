@@ -1,6 +1,14 @@
 import { createHmac, randomInt, randomUUID } from 'node:crypto';
 import {
-  ConflictException, ForbiddenException, HttpException, HttpStatus, Inject, Injectable, Logger, ServiceUnavailableException,
+  ConflictException,
+  ForbiddenException,
+  HttpException,
+  HttpStatus,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { consentQueries, onboardingQueries } from '@sparktrack/db';
@@ -8,7 +16,7 @@ import type { Kysely } from 'kysely';
 import type { ConsentVerification, LearnerOnboarding } from '@sparktrack/contracts';
 import type { SparkTrackDatabase } from '@sparktrack/db';
 import { KYSELY } from '../../common/database/database.module';
-import type { AuthUser } from '../../common/auth/auth.guard';
+import { LearnerAccessService, type AuthUser } from '../../common/auth/auth.guard';
 import { TermiiSmsService } from './termii-sms.service';
 
 const CONSENT_TTL_MS = 10 * 60_000;
@@ -21,6 +29,7 @@ export class AuthPlatformService {
     @Inject(KYSELY) private readonly db: Kysely<SparkTrackDatabase>,
     @Inject(ConfigService) private readonly config: ConfigService,
     @Inject(TermiiSmsService) private readonly sms: TermiiSmsService,
+    private readonly access: LearnerAccessService,
   ) {}
 
   async onboard(user: AuthUser, payload: LearnerOnboarding) {
@@ -87,6 +96,30 @@ export class AuthPlatformService {
       case 'not_found':
         throw new ForbiddenException('This consent request has expired. Ask the learner to send a new request.');
     }
+  }
+
+  async getConsentPreferences(learnerId: string) {
+    const prefs = await consentQueries.getPreferences(this.db, learnerId);
+    if (!prefs) throw new NotFoundException('Learner profile not found');
+    return prefs;
+  }
+
+  async updateConsentPreferences(
+    user: AuthUser,
+    learnerId: string,
+    payload: {
+      consentStatus: 'VERIFIED_ACTIVE' | 'RESTRICTED_INTERNAL_ONLY' | 'REVOKED';
+      allowPublicPortfolio: boolean;
+      allowPartnerTalentDiscovery: boolean;
+    },
+  ) {
+    await this.access.assertCanAccess(user, learnerId);
+    const updated = await consentQueries.updatePreferences(this.db, {
+      learnerId,
+      ...payload,
+    });
+    if (!updated) throw new NotFoundException('Learner profile not found');
+    return updated;
   }
 
   private hashCode(challengeId: string, code: string): string {

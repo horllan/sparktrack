@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input } from '@sparktrack/ui';
 import { createClient } from '../../../../lib/supabase/client';
 
@@ -26,6 +26,14 @@ interface GeneratedReport {
   [key: string]: unknown;
 }
 
+interface ConsentPreferences {
+  learnerId: string;
+  consentStatus: 'PENDING_PARENTAL_CONSENT' | 'VERIFIED_ACTIVE' | 'RESTRICTED_INTERNAL_ONLY' | 'REVOKED';
+  consentVerifiedAt: string | null;
+  allowPublicPortfolio: boolean;
+  allowPartnerTalentDiscovery: boolean;
+}
+
 const SECTION_KEYS = [
   'executiveSummary',
   'participationHistory',
@@ -47,20 +55,63 @@ export default function ParentDashboardPage() {
   const [report, setReport] = useState<GeneratedReport | null>(null);
   const [asOfDate, setAsOfDate] = useState('');
   const [snapshotSkills, setSnapshotSkills] = useState<Array<{ node_name: string; progression: string; score: number }>>([]);
+  const [consentPrefs, setConsentPrefs] = useState<ConsentPreferences | null>(null);
   const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
 
   async function authHeaders() {
     const { data } = await createClient().auth.getSession();
     const token = data.session?.access_token;
-    if (!token) throw new Error('Please sign in to access the Parent Portal.');
+    if (!token) throw new Error('Please sign in to access authenticated Parent Portal actions.');
     return { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+  }
+
+  const loadConsentPreferences = useCallback(async (id: string) => {
+    if (!id.trim()) return;
+    try {
+      const res = await fetch(`${API_URL}/v1/auth/consent/preferences/${id.trim()}`);
+      if (res.ok) setConsentPrefs((await res.json()) as ConsentPreferences);
+    } catch {
+      // Optional on initial load
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadConsentPreferences(learnerId);
+  }, [learnerId, loadConsentPreferences]);
+
+  async function updatePrivacyPreferences(next: {
+    consentStatus: 'VERIFIED_ACTIVE' | 'RESTRICTED_INTERNAL_ONLY' | 'REVOKED';
+    allowPublicPortfolio: boolean;
+    allowPartnerTalentDiscovery: boolean;
+  }) {
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(`${API_URL}/v1/auth/consent/preferences/${learnerId.trim()}`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify(next),
+      });
+      const body = (await res.json()) as ConsentPreferences & { message?: string };
+      if (!res.ok) throw new Error(body.message ?? 'Could not update NDPA privacy preferences.');
+      setConsentPrefs(body);
+      setNotice(`Updated NDPA consent & privacy controls (${body.consentStatus}).`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not update privacy preferences.');
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function fetchReport(generateNew: boolean) {
     if (!learnerId.trim()) return;
     setBusy(true);
     setError('');
+    setNotice('');
     try {
       const headers = await authHeaders();
       const res = await fetch(
@@ -103,11 +154,97 @@ export default function ParentDashboardPage() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Parent &amp; Guardian Development Report Portal</h1>
           <p className="text-sm text-slate-600">
-            13-Part SparkTrack Development Report &amp; Bitemporal Longitudinal Progression Viewer
+            13-Part SparkTrack Development Report, Bitemporal Progression Viewer &amp; NDPA 2023 Child-Safety Controls
           </p>
         </div>
 
         {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+        {notice && <p role="status" className="rounded-lg bg-green-50 p-3 text-sm text-green-800">{notice}</p>}
+
+        {consentPrefs && (
+          <Card>
+            <CardHeader>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <CardTitle className="text-base">Guardian NDPA 2023 Privacy &amp; Consent Controls</CardTitle>
+                  <CardDescription>
+                    Control public portfolio visibility, external partner talent discovery, or revoke consent at any time.
+                  </CardDescription>
+                </div>
+                <Badge variant={consentPrefs.consentStatus === 'VERIFIED_ACTIVE' ? 'success' : 'warning'}>
+                  {consentPrefs.consentStatus}
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="flex flex-wrap items-center justify-between gap-4">
+              <div className="flex flex-wrap gap-4 text-sm">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={consentPrefs.allowPublicPortfolio}
+                    disabled={busy || consentPrefs.consentStatus !== 'VERIFIED_ACTIVE'}
+                    onChange={(e) =>
+                      void updatePrivacyPreferences({
+                        consentStatus: 'VERIFIED_ACTIVE',
+                        allowPublicPortfolio: e.target.checked,
+                        allowPartnerTalentDiscovery: consentPrefs.allowPartnerTalentDiscovery,
+                      })
+                    }
+                  />
+                  <span>Allow Public Verifiable Portfolio</span>
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={consentPrefs.allowPartnerTalentDiscovery}
+                    disabled={busy || consentPrefs.consentStatus !== 'VERIFIED_ACTIVE'}
+                    onChange={(e) =>
+                      void updatePrivacyPreferences({
+                        consentStatus: 'VERIFIED_ACTIVE',
+                        allowPublicPortfolio: consentPrefs.allowPublicPortfolio,
+                        allowPartnerTalentDiscovery: e.target.checked,
+                      })
+                    }
+                  />
+                  <span>Allow Partner Talent Discovery</span>
+                </label>
+              </div>
+              <div className="flex gap-2">
+                {consentPrefs.consentStatus !== 'VERIFIED_ACTIVE' ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() =>
+                      void updatePrivacyPreferences({
+                        consentStatus: 'VERIFIED_ACTIVE',
+                        allowPublicPortfolio: false,
+                        allowPartnerTalentDiscovery: false,
+                      })
+                    }
+                  >
+                    Restore Active Consent (Private)
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() =>
+                      void updatePrivacyPreferences({
+                        consentStatus: 'REVOKED',
+                        allowPublicPortfolio: false,
+                        allowPartnerTalentDiscovery: false,
+                      })
+                    }
+                  >
+                    Revoke Consent (NDPA Right to Withdraw)
+                  </Button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader>
