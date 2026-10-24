@@ -338,7 +338,7 @@ export default function AdminDashboardPage() {
                   <div key={c.id} className="rounded-lg border border-slate-200 bg-white p-3 text-sm">
                     <div className="flex items-center justify-between">
                       <span className="font-semibold text-slate-900">{c.title}</span>
-                      <Badge variant={c.isActive ? 'advanced' : 'outline'}>
+                      <Badge variant={c.isActive ? 'success' : 'outline'}>
                         {c.currentEnrolmentCount}/{c.maxCapacity} enrolled
                       </Badge>
                     </div>

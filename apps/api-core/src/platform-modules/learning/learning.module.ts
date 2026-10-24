@@ -1,5 +1,5 @@
 import { createHmac, randomUUID } from 'node:crypto';
-import { Body, Controller, Get, Inject, Module, NotFoundException, Param, ParseUUIDPipe, Post } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, Inject, Module, NotFoundException, Param, ParseUUIDPipe, Post } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { institutionQueries, learningQueries, ledgerQueries, type SparkTrackDatabase } from '@sparktrack/db';
@@ -35,6 +35,20 @@ class LearningController {
   @ApiOperation({ summary: 'List all skill nodes in the capability graph' })
   skills() {
     return learningQueries.skillCatalogue(this.db);
+  }
+
+  @Public()
+  @Get('portfolio/:learnerId')
+  @ApiOperation({ summary: 'NDPA-gated public verifiable portfolio and SHA-256 ledger receipts' })
+  async publicPortfolio(@Param('learnerId', ParseUUIDPipe) learnerId: string) {
+    const res = await learningQueries.publicPortfolio(this.db, learnerId);
+    if (res.status === 'not_found') throw new NotFoundException('Learner portfolio not found');
+    if (res.status === 'private') {
+      throw new ForbiddenException(
+        'This learner portfolio is private. Guardian verified consent and explicit public portfolio opt-in are required.',
+      );
+    }
+    return res;
   }
 
   @ApiBearerAuth()

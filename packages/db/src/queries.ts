@@ -530,6 +530,56 @@ export const learningQueries = {
       rowSignatureHash: row.row_signature_hash,
     }));
   },
+
+  async publicPortfolio(db: Db, learnerId: string) {
+    const profileRes = await sql<{
+      learner_id: string;
+      full_name: string;
+      education_stage: string;
+      school_name: string | null;
+      consent_status: string;
+      allow_public_portfolio: boolean;
+      declared_interests: string[];
+    }>`
+      SELECT
+        lp.learner_id,
+        u.full_name,
+        lp.education_stage,
+        o.name AS school_name,
+        lp.consent_status::text,
+        lp.allow_public_portfolio,
+        lp.declared_interests
+      FROM core.learner_profiles lp
+      JOIN core.users u ON u.id = lp.learner_id
+      LEFT JOIN core.organisations o ON o.id = lp.current_school_id
+      WHERE lp.learner_id = ${learnerId}::uuid
+    `.execute(db);
+
+    const row = profileRes.rows[0];
+    if (!row) return { status: 'not_found' as const };
+    if (row.consent_status !== 'VERIFIED_ACTIVE' || !row.allow_public_portfolio) {
+      return { status: 'private' as const };
+    }
+
+    const [skills, artifacts] = await Promise.all([
+      bitemporalQueries.profileAsOf(db, learnerId, new Date()),
+      this.learnerArtifacts(db, learnerId),
+    ]);
+
+    const firstName = row.full_name.trim().split(/\s+/)[0] ?? 'Explorer';
+    return {
+      status: 'public' as const,
+      profile: {
+        learnerId: row.learner_id,
+        displayName: `${firstName} (${row.education_stage})`,
+        educationStage: row.education_stage,
+        schoolName: row.school_name,
+        declaredInterests: row.declared_interests ?? [],
+      },
+      skills,
+      artifacts,
+    };
+  },
 };
 
 export const mentorshipQueries = {

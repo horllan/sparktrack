@@ -113,7 +113,7 @@ export default function SchoolDashboardPage() {
                 <CardHeader className="pb-2">
                   <CardDescription>SHA-256 Hash Chain Audit</CardDescription>
                   <CardTitle className="text-base">
-                    <Badge variant={data.ledgerAudit.allValid ? 'advanced' : 'destructive'}>
+                    <Badge variant={data.ledgerAudit.allValid ? 'success' : 'warning'}>
                       {data.ledgerAudit.allValid
                         ? `Verified (${data.ledgerAudit.totalEntries} blocks)`
                         : 'Integrity Alert'}
@@ -176,7 +176,7 @@ export default function SchoolDashboardPage() {
                           <span className="font-medium text-slate-900">
                             Stage: {learner.educationStage} • {learner.schoolName ?? 'Independent'}
                           </span>
-                          <Badge variant="advanced">{learner.verifiedArtifacts} sealed artifacts</Badge>
+                          <Badge variant="success">{learner.verifiedArtifacts} sealed artifacts</Badge>
                         </div>
                         <p className="mt-1 text-xs text-slate-500">
                           Learner ID: <code>{learner.learnerId.slice(0, 8)}…</code> • Declared:{' '}

@@ -27,6 +27,9 @@ function redisConnection() {
     password: url.password ? decodeURIComponent(url.password) : undefined,
     tls: url.protocol === 'rediss:' ? {} : undefined,
     maxRetriesPerRequest: null as null,
+    lazyConnect: true,
+    enableOfflineQueue: false,
+    retryStrategy: (times: number) => (times > 2 ? null : 500),
   };
 }
 

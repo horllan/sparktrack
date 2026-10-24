@@ -9,6 +9,8 @@ import { KYSELY } from '../../common/database/database.module';
 import { SPARKTRACK_EVENTS, SPARKTRACK_QUEUES, type EvidenceSealedEvent } from '../../common/events/event-names';
 import { LearnerAccessService, type AuthUser } from '../../common/auth/auth.guard';
 import { deriveUuid } from '../../common/util/derive-uuid';
+import { SkillEngineService } from '../skill-engine/skill-engine.service';
+import { ProgressEngineService } from '../progress-engine/progress-engine.service';
 
 /**
  * Evidence Engine — idempotent ingestion + SHA-256 ledger sealing.
@@ -22,6 +24,8 @@ export class EvidenceEngineService {
     @Inject(KYSELY) private readonly db: Kysely<SparkTrackDatabase>,
     @InjectQueue(SPARKTRACK_QUEUES.INTELLIGENCE_PIPELINE) private readonly pipeline: Queue,
     private readonly access: LearnerAccessService,
+    private readonly skills: SkillEngineService,
+    private readonly progress: ProgressEngineService,
   ) {}
 
   private async assertActiveConsent(learnerId: string) {
@@ -32,11 +36,20 @@ export class EvidenceEngineService {
   }
 
   private async emitSealed(e: EvidenceSealedEvent) {
-    // Recompute is idempotent (unchanged states are no-ops), so no jobId dedupe: a dropped event would be worse.
-    await this.pipeline.add(SPARKTRACK_EVENTS.EVIDENCE_SEALED, e, {
-      removeOnComplete: true, removeOnFail: 100, attempts: 3,
-      backoff: { type: 'exponential', delay: 2000 },
-    });
+    // Immediate bitemporal recompute guarantees deterministic consistency even when Redis is offline.
+    const computed = await this.skills.computeAll(e.learnerId);
+    await this.progress.applySkills(e.learnerId, computed);
+
+    await this.pipeline
+      .add(SPARKTRACK_EVENTS.EVIDENCE_SEALED, e, {
+        removeOnComplete: true,
+        removeOnFail: 100,
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 2000 },
+      })
+      .catch((err) => {
+        this.logger.debug(`BullMQ enqueue skipped (inline recompute already applied): ${err instanceof Error ? err.message : err}`);
+      });
   }
 
   async syncEvidence(user: AuthUser, p: EvidenceSyncPayload) {
@@ -46,11 +59,18 @@ export class EvidenceEngineService {
     const isMentor = user.role === 'MENTOR';
     const privileged = isMentor || user.role === 'SUPER_ADMIN';
     const result = await ledgerQueries.syncAndSeal(this.db, {
-      clientSyncId: p.clientSyncId, learnerId: p.learnerId, programmeCohortId: p.programmeCohortId,
-      activityNodeId: p.activityNodeId, artifactType: p.artifactType, title: p.title, description: p.description,
-      storageR2Keys: p.storageR2Keys, externalUrls: p.externalUrls, payload: p.payload,
-      mentorVerifierId: isMentor ? user.id : undefined,           // never trust a client-supplied verifier
-      qualityScore: privileged ? p.qualityScore : undefined,       // learners cannot self-score
+      clientSyncId: p.clientSyncId,
+      learnerId: p.learnerId,
+      programmeCohortId: p.programmeCohortId,
+      activityNodeId: p.activityNodeId,
+      artifactType: p.artifactType,
+      title: p.title,
+      description: p.description,
+      storageR2Keys: p.storageR2Keys,
+      externalUrls: p.externalUrls,
+      payload: p.payload,
+      mentorVerifierId: isMentor ? user.id : undefined, // never trust a client-supplied verifier
+      qualityScore: privileged ? p.qualityScore : undefined, // learners cannot self-score
       complexityWeight: privileged ? p.complexityWeight : 1.0,
       capturedOfflineAt: new Date(p.capturedOfflineAt),
     });
@@ -72,18 +92,36 @@ export class EvidenceEngineService {
     const capturedAt = new Date(r.capturedOfflineAt);
 
     const result = await ledgerQueries.syncAndSeal(this.db, {
-      clientSyncId: r.clientSyncId, learnerId: r.learnerId, programmeCohortId: r.cohortId,
-      activityNodeId: r.activityNodeId, artifactType: 'MENTOR_OBSERVATION',
-      title: 'Mentor micro-rubric', description: r.overallComment, storageR2Keys: [], externalUrls: [],
+      clientSyncId: r.clientSyncId,
+      learnerId: r.learnerId,
+      programmeCohortId: r.cohortId,
+      activityNodeId: r.activityNodeId,
+      artifactType: 'MENTOR_OBSERVATION',
+      title: 'Mentor micro-rubric',
+      description: r.overallComment,
+      storageR2Keys: [],
+      externalUrls: [],
       payload: { schema_version: '1.0', rubric_for_artifact: r.artifactId ?? null, skill_codes: skillCodes },
-      mentorVerifierId: user.id, qualityScore: r.qualityScore, complexityWeight: 1.0, capturedOfflineAt: capturedAt,
+      mentorVerifierId: user.id,
+      qualityScore: r.qualityScore,
+      complexityWeight: 1.0,
+      capturedOfflineAt: capturedAt,
     });
 
-    await rubricQueries.insertSignals(this.db, r.observedSignals.map((s) => ({
-      id: deriveUuid(`${r.clientSyncId}:${s.signal}`), mentorId: user.id, learnerId: r.learnerId,
-      artifactId: r.artifactId ?? null, cohortId: r.cohortId, signal: s.signal, intensity: s.intensity,
-      note: s.note ?? null, capturedOfflineAt: capturedAt,
-    })));
+    await rubricQueries.insertSignals(
+      this.db,
+      r.observedSignals.map((s) => ({
+        id: deriveUuid(`${r.clientSyncId}:${s.signal}`),
+        mentorId: user.id,
+        learnerId: r.learnerId,
+        artifactId: r.artifactId ?? null,
+        cohortId: r.cohortId,
+        signal: s.signal,
+        intensity: s.intensity,
+        note: s.note ?? null,
+        capturedOfflineAt: capturedAt,
+      })),
+    );
 
     if (!result.alreadySynced) {
       await this.emitSealed({ artifactId: result.artifactId, learnerId: r.learnerId, ledgerSeq: result.ledgerSeq });

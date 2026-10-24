@@ -43,7 +43,7 @@ const SECTION_KEYS = [
 ] as const;
 
 export default function ParentDashboardPage() {
-  const [learnerId, setLearnerId] = useState('');
+  const [learnerId, setLearnerId] = useState('11111111-1111-4111-8111-111111111113');
   const [report, setReport] = useState<GeneratedReport | null>(null);
   const [asOfDate, setAsOfDate] = useState('');
   const [snapshotSkills, setSnapshotSkills] = useState<Array<{ node_name: string; progression: string; score: number }>>([]);
