@@ -487,33 +487,48 @@ export const consentQueries = {
       allowPartnerTalentDiscovery: boolean;
     },
   ) {
-    const isVerified = p.consentStatus === 'VERIFIED_ACTIVE';
-    const allowPublic = isVerified && p.allowPublicPortfolio;
-    const allowPartner = isVerified && p.allowPartnerTalentDiscovery;
+    return db.transaction().execute(async (trx) => {
+      const current = await sql<{ consent_status: string }>`
+        SELECT consent_status::text
+        FROM core.learner_profiles
+        WHERE learner_id = ${p.learnerId}::uuid
+        FOR UPDATE
+      `.execute(trx);
+      const cur = current.rows[0];
+      if (!cur) return { status: 'not_found' as const };
 
-    const r = await sql<{
-      learner_id: string;
-      consent_status: string;
-      allow_public_portfolio: boolean;
-      allow_partner_talent_discovery: boolean;
-    }>`
-      UPDATE core.learner_profiles
-      SET consent_status = ${p.consentStatus}::core.consent_status,
-          allow_public_portfolio = ${allowPublic},
-          allow_partner_talent_discovery = ${allowPartner},
-          updated_at = NOW()
-      WHERE learner_id = ${p.learnerId}::uuid
-      RETURNING learner_id, consent_status::text, allow_public_portfolio, allow_partner_talent_discovery
-    `.execute(db);
+      if (p.consentStatus === 'VERIFIED_ACTIVE' && cur.consent_status !== 'VERIFIED_ACTIVE') {
+        return { status: 'requires_sms_verification' as const };
+      }
 
-    const row = r.rows[0];
-    if (!row) return null;
-    return {
-      learnerId: row.learner_id,
-      consentStatus: row.consent_status,
-      allowPublicPortfolio: row.allow_public_portfolio,
-      allowPartnerTalentDiscovery: row.allow_partner_talent_discovery,
-    };
+      const isVerified = p.consentStatus === 'VERIFIED_ACTIVE';
+      const allowPublic = isVerified && p.allowPublicPortfolio;
+      const allowPartner = isVerified && p.allowPartnerTalentDiscovery;
+
+      const r = await sql<{
+        learner_id: string;
+        consent_status: string;
+        allow_public_portfolio: boolean;
+        allow_partner_talent_discovery: boolean;
+      }>`
+        UPDATE core.learner_profiles
+        SET consent_status = ${p.consentStatus}::core.consent_status,
+            allow_public_portfolio = ${allowPublic},
+            allow_partner_talent_discovery = ${allowPartner},
+            updated_at = NOW()
+        WHERE learner_id = ${p.learnerId}::uuid
+        RETURNING learner_id, consent_status::text, allow_public_portfolio, allow_partner_talent_discovery
+      `.execute(trx);
+
+      const row = r.rows[0]!;
+      return {
+        status: 'updated' as const,
+        learnerId: row.learner_id,
+        consentStatus: row.consent_status,
+        allowPublicPortfolio: row.allow_public_portfolio,
+        allowPartnerTalentDiscovery: row.allow_partner_talent_discovery,
+      };
+    });
   },
 };
 

@@ -98,7 +98,8 @@ export class AuthPlatformService {
     }
   }
 
-  async getConsentPreferences(learnerId: string) {
+  async getConsentPreferences(user: AuthUser, learnerId: string) {
+    await this.access.assertCanAccess(user, learnerId);
     const prefs = await consentQueries.getPreferences(this.db, learnerId);
     if (!prefs) throw new NotFoundException('Learner profile not found');
     return prefs;
@@ -113,13 +114,26 @@ export class AuthPlatformService {
       allowPartnerTalentDiscovery: boolean;
     },
   ) {
+    if (user.role !== 'PARENT' && user.role !== 'SUPER_ADMIN') {
+      throw new ForbiddenException('Only a verified guardian can change consent and privacy preferences.');
+    }
     await this.access.assertCanAccess(user, learnerId);
     const updated = await consentQueries.updatePreferences(this.db, {
       learnerId,
       ...payload,
     });
-    if (!updated) throw new NotFoundException('Learner profile not found');
-    return updated;
+    if (updated.status === 'not_found') throw new NotFoundException('Learner profile not found');
+    if (updated.status === 'requires_sms_verification') {
+      throw new ForbiddenException(
+        'Consent can only be activated through the 6-digit guardian SMS OTP verification flow.',
+      );
+    }
+    return {
+      learnerId: updated.learnerId,
+      consentStatus: updated.consentStatus,
+      allowPublicPortfolio: updated.allowPublicPortfolio,
+      allowPartnerTalentDiscovery: updated.allowPartnerTalentDiscovery,
+    };
   }
 
   private hashCode(challengeId: string, code: string): string {

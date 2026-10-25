@@ -5,8 +5,6 @@ import { useSearchParams } from 'next/navigation';
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input } from '@sparktrack/ui';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
-const DEMO_EXPLORER_ID = '11111111-1111-4111-8111-111111111113';
-
 interface PublicPortfolioResponse {
   status: 'public';
   profile: {
@@ -40,7 +38,7 @@ interface PublicPortfolioResponse {
 
 function PortfolioContent() {
   const searchParams = useSearchParams();
-  const [learnerId, setLearnerId] = useState(searchParams.get('learnerId') ?? DEMO_EXPLORER_ID);
+  const [learnerId, setLearnerId] = useState(searchParams.get('learnerId') ?? '');
   const [portfolio, setPortfolio] = useState<PublicPortfolioResponse | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -67,14 +65,14 @@ function PortfolioContent() {
   }, [learnerId, loadPortfolio]);
 
   return (
-    <main className="min-h-screen bg-slate-50 p-6">
-      <div className="mx-auto max-w-5xl space-y-6">
+    <main className="min-h-screen px-4 py-8 sm:px-6 lg:px-10">
+      <div className="mx-auto max-w-6xl space-y-7">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">Verifiable Capability Portfolio &amp; SHA-256 Ledger Proof</h1>
-            <p className="text-sm text-slate-600">
-              NDPA-gated public credential view. Only accessible when a guardian has verified SMS consent AND enabled{' '}
-              <code>allow_public_portfolio = TRUE</code>.
+            <p className="mb-2 text-xs font-bold uppercase tracking-[0.14em] text-spark-700">Your work, made visible</p>
+            <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">A portfolio that shows how you grow.</h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+              This public view is available only when a guardian has verified consent and enabled portfolio sharing.
             </p>
           </div>
           <div className="flex gap-2">
@@ -82,9 +80,10 @@ function PortfolioContent() {
               className="w-72"
               value={learnerId}
               onChange={(e) => setLearnerId(e.target.value)}
-              placeholder="Learner UUID"
+              aria-label="Learner profile ID"
+              placeholder="Learner profile ID"
             />
-            <Button disabled={busy} onClick={() => void loadPortfolio(learnerId)}>
+            <Button disabled={busy || !learnerId.trim()} onClick={() => void loadPortfolio(learnerId)}>
               {busy ? 'Verifying…' : 'Verify Portfolio'}
             </Button>
           </div>
@@ -94,6 +93,14 @@ function PortfolioContent() {
           <Card className="border-amber-300 bg-amber-50">
             <CardContent className="p-4 text-sm text-amber-900">
               <strong>NDPA Privacy Gate Active:</strong> {error}
+            </CardContent>
+          </Card>
+        )}
+
+        {!portfolio && !busy && !error && !learnerId && (
+          <Card>
+            <CardContent className="p-6 text-sm leading-6 text-slate-600">
+              Enter a learner profile ID to view their public portfolio. A portfolio is only available when the family has chosen to share it.
             </CardContent>
           </Card>
         )}
@@ -114,8 +121,8 @@ function PortfolioContent() {
                 </div>
               </CardHeader>
               <CardContent>
-                <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  Verified Bitemporal Capability Snapshot
+                <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-600">
+                  Skills shown through shared work
                 </h3>
                 <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
                   {portfolio.skills.map((s) => (
@@ -125,7 +132,7 @@ function PortfolioContent() {
                         <Badge variant="competent">{s.progression}</Badge>
                       </div>
                       <p className="mt-1 text-xs text-slate-500">
-                        Score: {Math.round(s.score * 100)}% • {s.evidence_count} sealed artifacts
+                        Showing in {s.evidence_count} {s.evidence_count === 1 ? 'project' : 'projects'}
                       </p>
                     </div>
                   ))}
@@ -135,9 +142,9 @@ function PortfolioContent() {
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Cryptographic Append-Only Evidence Ledger Receipts</CardTitle>
+                <CardTitle className="text-base">Projects and feedback</CardTitle>
                 <CardDescription>
-                  Every artifact below is sealed in PostgreSQL <code>evidence.cryptographic_ledger</code> with an immutable SHA-256 chain signature.
+                  A record of what was shared and the feedback it received.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
@@ -156,14 +163,21 @@ function PortfolioContent() {
                         ) : (
                           <Badge variant="developing">Pending Mentor Verification</Badge>
                         )}
-                        <Badge variant="outline">Ledger Block #{art.ledgerSeq ?? '—'}</Badge>
+                        <Badge variant="outline">Shared work</Badge>
                       </div>
                     </div>
                     {art.description && <p className="mt-1 text-xs text-slate-600">{art.description}</p>}
-                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded bg-slate-50 px-2.5 py-1.5 font-mono text-xs text-slate-600">
-                      <span>Skills: {art.skillCodes.join(', ') || '—'}</span>
-                      <span>SHA-256: {art.rowSignatureHash ?? '—'}</span>
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      {art.skillCodes.map((code) => (
+                        <Badge key={code} variant="secondary">{code.replace(/^SKILL_|^SIG_/, '').replace(/_/g, ' ')}</Badge>
+                      ))}
                     </div>
+                    {art.rowSignatureHash && (
+                      <details className="mt-3 border-t border-slate-100 pt-3">
+                        <summary className="cursor-pointer text-xs font-semibold text-slate-600 hover:text-slate-900">View authenticity details</summary>
+                        <p className="mt-2 break-all font-mono text-[11px] leading-5 text-slate-500">Record proof: {art.rowSignatureHash}</p>
+                      </details>
+                    )}
                   </div>
                 ))}
               </CardContent>
@@ -182,4 +196,3 @@ export default function StudentPortfolioPage() {
     </Suspense>
   );
 }
-

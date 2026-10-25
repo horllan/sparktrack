@@ -20,6 +20,13 @@ module.exports = {
   },
   overrides: [
     {
+      // NestJS emitDecoratorMetadata requires runtime class value imports for constructor DI
+      files: ['apps/api-core/**/*.ts'],
+      rules: {
+        '@typescript-eslint/consistent-type-imports': 'off',
+      },
+    },
+    {
       // Enforce intelligence-core isolation: no imports from platform-modules
       files: ['apps/api-core/src/intelligence-core/**/*.ts'],
       rules: {

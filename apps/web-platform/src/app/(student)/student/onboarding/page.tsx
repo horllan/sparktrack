@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { Check, Compass, ShieldCheck, Sparkles } from '@sparktrack/ui';
 import { LearnerOnboardingSchema } from '@sparktrack/contracts';
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input } from '@sparktrack/ui';
 import { createClient } from '../../../../lib/supabase/client';
@@ -107,15 +108,58 @@ export default function StudentOnboardingPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-spark-50 p-4">
-      <Card className="w-full max-w-lg">
+    <main className="flex min-h-screen items-center justify-center px-4 py-10 sm:px-6 lg:px-10">
+      <div className="mx-auto grid w-full max-w-6xl items-center gap-8 lg:grid-cols-[0.8fr_1.2fr] lg:gap-16">
+        <section className="spark-enter max-w-xl">
+          <span className="inline-flex items-center gap-2 rounded-full border border-spark-100 bg-white px-3 py-1.5 text-xs font-bold uppercase tracking-[0.12em] text-spark-800 shadow-sm">
+            <Sparkles size={14} aria-hidden="true" /> Your first steps
+          </span>
+          <h1 className="mt-6 text-4xl font-extrabold leading-tight tracking-[-0.04em] text-slate-900 sm:text-5xl">
+            Start with what makes you curious.
+          </h1>
+          <p className="mt-4 max-w-lg text-base leading-7 text-slate-600">
+            Set up your learner space, choose a few things you’d like to explore, and invite a parent or guardian to support your journey.
+          </p>
+          <div className="mt-8 space-y-3">
+            {[
+              { icon: Compass, title: 'Explore at your pace', text: 'Interests can change as you try new things.' },
+              { icon: ShieldCheck, title: 'Your family is part of it', text: 'A guardian reviews consent before evidence is collected.' },
+              { icon: Check, title: 'Build a record of growth', text: 'Keep track of projects and skills you practice.' },
+            ].map(({ icon: Icon, title, text }) => (
+              <div key={title} className="flex items-start gap-3 rounded-2xl border border-slate-200/80 bg-white/80 p-4">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-spark-50 text-spark-700">
+                  <Icon size={18} aria-hidden="true" />
+                </span>
+                <div>
+                  <p className="text-sm font-bold text-slate-900">{title}</p>
+                  <p className="mt-1 text-sm leading-5 text-slate-600">{text}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+        <Card className="spark-enter w-full overflow-hidden">
+        <div className="h-1.5 bg-gradient-to-r from-spark-600 via-cyan-500 to-coral-500" />
         <CardHeader>
-          <CardTitle>Welcome to SparkTrack</CardTitle>
-          <CardDescription>{step < 4 ? `Step ${step} of 3` : 'Onboarding submitted'}</CardDescription>
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-[0.13em] text-spark-700">
+              {step < 4 ? `Step ${step} of 3` : 'You’re all set'}
+            </span>
+            {step < 4 && <span className="text-xs font-medium text-slate-500">{Math.round((step / 3) * 100)}% complete</span>}
+          </div>
+          <div className="mb-4 flex gap-1.5" aria-hidden="true">
+            {[1, 2, 3].map((part) => (
+              <span key={part} className={`h-1.5 flex-1 rounded-full ${part <= step ? 'bg-spark-600' : 'bg-slate-100'}`} />
+            ))}
+          </div>
+          <CardTitle>{step === 4 ? 'Welcome to your SparkTrack journey' : 'Create your learner space'}</CardTitle>
+          <CardDescription>
+            {step === 1 ? 'Your account and basic learner details.' : step === 2 ? 'Choose a few interests to get started.' : step === 3 ? 'Add a parent or guardian contact.' : 'We’ve sent your guardian a consent request.'}
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {error && <p role="alert" className="rounded bg-red-50 p-3 text-sm text-red-700">{error}</p>}
-          {notice && <p role="status" className="rounded bg-blue-50 p-3 text-sm text-blue-800">{notice}</p>}
+          {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
+          {notice && <p role="status" className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">{notice}</p>}
           {step === 1 && (<>
             <Input value={email} onChange={(e) => setEmail(e.target.value)} type="email" autoComplete="email" placeholder="Your email" />
             <Input value={password} onChange={(e) => setPassword(e.target.value)} type="password"
@@ -147,7 +191,7 @@ export default function StudentOnboardingPage() {
             <div className="grid grid-cols-2 gap-2">
               {INTERESTS.map((interest) => (
                 <button key={interest} type="button" onClick={() => toggle(interest)} aria-pressed={interests.includes(interest)}
-                  className={`rounded-lg border p-3 text-left text-sm ${interests.includes(interest) ? 'border-spark-500 bg-spark-100' : 'border-slate-200'}`}>
+                  className={`rounded-xl border p-3.5 text-left text-sm font-medium transition-all ${interests.includes(interest) ? 'border-spark-500 bg-spark-50 text-spark-900 shadow-sm ring-2 ring-spark-100' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50'}`}>
                   {interest}
                 </button>
               ))}
@@ -174,6 +218,7 @@ export default function StudentOnboardingPage() {
           )}
         </CardContent>
       </Card>
+      </div>
     </main>
   );
 }

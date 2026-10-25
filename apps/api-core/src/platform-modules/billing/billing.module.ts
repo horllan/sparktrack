@@ -1,11 +1,12 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { BadRequestException, Body, Controller, Get, Headers, Inject, Module, Post, UnauthorizedException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import type { ConfigService } from '@nestjs/config';
+import { ConfigService as NestConfigService } from '@nestjs/config';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { billingQueries, type SparkTrackDatabase } from '@sparktrack/db';
 import type { Kysely } from 'kysely';
 import { z } from 'zod';
-import { Public } from '../../common/auth/auth.guard';
+import { Public, Roles } from '../../common/auth/auth.guard';
 import { KYSELY } from '../../common/database/database.module';
 
 const CreateCohortSchema = z.object({
@@ -47,7 +48,7 @@ export function verifyStripeSignature(payloadJson: string, signatureHeader: stri
   );
   const timestamp = parts.t;
   const v1 = parts.v1;
-  if (!timestamp || !v1) return false;
+  if (!timestamp || !v1 || !/^\d+$/.test(timestamp)) return false;
   const expected = createHmac('sha256', secret).update(`${timestamp}.${payloadJson}`).digest('hex');
   if (expected.length !== v1.length) return false;
   return timingSafeEqual(Buffer.from(expected, 'utf8'), Buffer.from(v1, 'utf8'));
@@ -58,7 +59,7 @@ export function verifyStripeSignature(payloadJson: string, signatureHeader: stri
 class BillingController {
   constructor(
     @Inject(KYSELY) private readonly db: Kysely<SparkTrackDatabase>,
-    private readonly config: ConfigService,
+    @Inject(NestConfigService) private readonly config: ConfigService,
   ) {}
 
   @Public()
@@ -70,6 +71,7 @@ class BillingController {
 
   @ApiBearerAuth()
   @Post('cohorts')
+  @Roles('SCHOOL_ADMIN', 'SUPER_ADMIN')
   @ApiOperation({ summary: 'Create a new programme cohort' })
   createCohort(@Body() body: unknown) {
     const parsed = CreateCohortSchema.parse(body);
@@ -81,6 +83,7 @@ class BillingController {
 
   @ApiBearerAuth()
   @Post('enrolments')
+  @Roles('PARENT', 'SCHOOL_ADMIN', 'SUPER_ADMIN')
   @ApiOperation({ summary: 'Enrol a learner into a programme cohort (supports Free Pilot, Scholarship, Paystack, Stripe)' })
   enrol(@Body() body: unknown) {
     const parsed = EnrolLearnerSchema.parse(body);

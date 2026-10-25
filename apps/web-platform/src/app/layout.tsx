@@ -4,11 +4,11 @@ import { Providers } from './providers';
 import { Navbar } from '../components/navbar';
 
 export const metadata: Metadata = {
-  title: 'SparkTrack — Discover Your Potential',
-  description: 'Explore careers, build skills, and demonstrate your capabilities.',
+  title: 'SparkTrack — Explore what you can do',
+  description: 'Discover interests, build practical skills, and see your growth through real experiences.',
   manifest: '/manifest.json',
 };
-export const viewport: Viewport = { width: 'device-width', initialScale: 1, themeColor: '#f59e0b' };
+export const viewport: Viewport = { width: 'device-width', initialScale: 1, themeColor: '#172554' };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

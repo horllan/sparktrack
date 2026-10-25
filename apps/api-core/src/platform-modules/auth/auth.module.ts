@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Inject, Module, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, Inject, Module, Param, ParseUUIDPipe, Patch, Post, ServiceUnavailableException } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { LearnerOnboardingSchema, ConsentVerificationSchema } from '@sparktrack/contracts';
 import { ledgerQueries, type SparkTrackDatabase } from '@sparktrack/db';
@@ -55,14 +55,14 @@ class AuthController {
     return this.auth.verifyConsent(ConsentVerificationSchema.parse(body));
   }
 
-  @Public()
   @Get('consent/preferences/:learnerId')
-  @ApiOperation({ summary: 'Get current NDPA parental consent status and privacy flags for a learner' })
-  getConsentPreferences(@Param('learnerId', ParseUUIDPipe) learnerId: string) {
-    return this.auth.getConsentPreferences(learnerId);
+  @ApiOperation({ summary: 'Get current NDPA parental consent status and privacy flags for an authorized learner' })
+  getConsentPreferences(@CurrentUser() user: AuthUser, @Param('learnerId', ParseUUIDPipe) learnerId: string) {
+    return this.auth.getConsentPreferences(user, learnerId);
   }
 
   @Patch('consent/preferences/:learnerId')
+  @Roles('PARENT', 'SUPER_ADMIN')
   @ApiOperation({ summary: 'Update guardian privacy toggles or revoke consent (NDPA 2023 compliance)' })
   updateConsentPreferences(
     @CurrentUser() user: AuthUser,
@@ -83,11 +83,21 @@ class HealthController {
   @ApiOperation({ summary: 'Readiness & cryptographic ledger health check' })
   async ok() {
     const chain = await ledgerQueries.verifyChain(this.db);
+    const ledgerIntegrityValid = chain.every((entry) => entry.isValid);
+    if (!ledgerIntegrityValid) {
+      throw new ServiceUnavailableException({
+        status: 'degraded',
+        database: 'connected',
+        ledgerBlocks: chain.length,
+        ledgerIntegrityValid: false,
+        timestamp: new Date().toISOString(),
+      });
+    }
     return {
       status: 'ok',
       database: 'connected',
       ledgerBlocks: chain.length,
-      ledgerIntegrityValid: chain.every((entry) => entry.isValid),
+      ledgerIntegrityValid: true,
       timestamp: new Date().toISOString(),
     };
   }

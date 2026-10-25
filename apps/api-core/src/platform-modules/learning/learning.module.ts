@@ -1,11 +1,12 @@
 import { createHmac, randomUUID } from 'node:crypto';
 import { Body, Controller, ForbiddenException, Get, Inject, Module, NotFoundException, Param, ParseUUIDPipe, Post } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import type { ConfigService } from '@nestjs/config';
+import { ConfigService as NestConfigService } from '@nestjs/config';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { institutionQueries, learningQueries, ledgerQueries, telemetryQueries, type SparkTrackDatabase } from '@sparktrack/db';
 import type { Kysely } from 'kysely';
 import { z } from 'zod';
-import { CurrentUser, LearnerAccessService, Public, type AuthUser } from '../../common/auth/auth.guard';
+import { CurrentUser, LearnerAccessService, Public, Roles, type AuthUser } from '../../common/auth/auth.guard';
 import { KYSELY } from '../../common/database/database.module';
 
 const CreateOrganisationSchema = z.object({
@@ -34,7 +35,7 @@ class LearningController {
   constructor(
     @Inject(KYSELY) private readonly db: Kysely<SparkTrackDatabase>,
     private readonly access: LearnerAccessService,
-    private readonly config: ConfigService,
+    @Inject(NestConfigService) private readonly config: ConfigService,
   ) {}
 
   @Public()
@@ -96,14 +97,16 @@ class LearningController {
 
   @ApiBearerAuth()
   @Post('institutions/organisations')
+  @Roles('SCHOOL_ADMIN', 'SUPER_ADMIN')
   @ApiOperation({ summary: 'Register a partner school, NGO, training provider, or sponsor organisation' })
   createOrganisation(@Body() body: unknown) {
     const parsed = CreateOrganisationSchema.parse(body);
     return institutionQueries.createOrganisation(this.db, parsed);
   }
 
-  @Public()
+  @ApiBearerAuth()
   @Post('institutions/refresh-summary')
+  @Roles('SCHOOL_ADMIN', 'SUPER_ADMIN')
   @ApiOperation({ summary: 'Concurrently refresh analytics.mv_learner_development_summary materialized view' })
   refreshMaterializedSummary() {
     return institutionQueries.refreshMaterializedSummary(this.db);

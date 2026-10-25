@@ -1,7 +1,9 @@
 import type { NextConfig } from 'next';
+import path from 'node:path';
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  outputFileTracingRoot: path.join(__dirname, '../..'),
   transpilePackages: ['@sparktrack/ui', '@sparktrack/contracts', '@sparktrack/offline-sync'],
   async headers() {
     return [
@@ -20,4 +22,3 @@ const nextConfig: NextConfig = {
 };
 
 export default nextConfig;
-

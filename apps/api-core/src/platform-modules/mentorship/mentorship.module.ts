@@ -3,7 +3,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { mentorshipQueries, type SparkTrackDatabase } from '@sparktrack/db';
 import type { Kysely } from 'kysely';
 import { z } from 'zod';
-import { CurrentUser, Public, type AuthUser } from '../../common/auth/auth.guard';
+import { CurrentUser, Roles, type AuthUser } from '../../common/auth/auth.guard';
 import { KYSELY } from '../../common/database/database.module';
 
 const AssignMentorSchema = z.object({
@@ -19,28 +19,29 @@ const VerifyArtifactSchema = z.object({
 });
 
 @ApiTags('mentorship')
+@ApiBearerAuth()
 @Controller('v1/mentorship')
 class MentorshipController {
   constructor(@Inject(KYSELY) private readonly db: Kysely<SparkTrackDatabase>) {}
 
-  @Public()
   @Get('queue')
+  @Roles('MENTOR', 'SCHOOL_ADMIN', 'SUPER_ADMIN')
   @ApiOperation({ summary: 'List learner artifacts awaiting mentor verification and rubric scoring' })
   queue(@Query('limit') limit?: string) {
     const parsedLimit = limit ? Math.min(Math.max(Number(limit) || 25, 1), 100) : 25;
     return mentorshipQueries.pendingQueue(this.db, parsedLimit);
   }
 
-  @ApiBearerAuth()
   @Post('assignments')
+  @Roles('SCHOOL_ADMIN', 'SUPER_ADMIN')
   @ApiOperation({ summary: 'Assign a mentor to a programme cohort or specific learner' })
   assign(@Body() body: unknown) {
     const parsed = AssignMentorSchema.parse(body);
     return mentorshipQueries.assignMentor(this.db, parsed);
   }
 
-  @ApiBearerAuth()
   @Post('artifacts/:artifactId/verify')
+  @Roles('MENTOR', 'SUPER_ADMIN')
   @ApiOperation({ summary: 'Verify an artifact and record the mentor quality score' })
   async verify(
     @CurrentUser() user: AuthUser,

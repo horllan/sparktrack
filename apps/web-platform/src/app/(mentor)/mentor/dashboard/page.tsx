@@ -3,21 +3,43 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { SyncEngine } from '@sparktrack/offline-sync';
 import type { BehaviouralSignal } from '@sparktrack/contracts';
-import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input } from '@sparktrack/ui';
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Check,
+  FolderKanban,
+  Input,
+  Sparkles,
+  UsersRound,
+} from '@sparktrack/ui';
 import { createClient } from '../../../../lib/supabase/client';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
 const API_BASE = API_URL.replace(/\/api\/?$/, '');
+const DEMO_COHORT_ID = '11111111-1111-4111-8111-000000000010';
+const DEMO_EXPLORER_ID = '11111111-1111-4111-8111-111111111113';
 
-const SIGNALS: Array<{ key: BehaviouralSignal; label: string }> = [
-  { key: 'analytical_thinking', label: 'Analytical Thinking' },
-  { key: 'persistence', label: 'Persistence & Grit' },
-  { key: 'problem_solving', label: 'Problem Solving' },
-  { key: 'creativity', label: 'Creativity' },
-  { key: 'collaboration', label: 'Collaboration' },
-  { key: 'communication', label: 'Communication' },
-  { key: 'initiative', label: 'Initiative' },
+const SIGNALS: Array<{ key: BehaviouralSignal; label: string; hint: string }> = [
+  { key: 'analytical_thinking', label: 'Analytical Thinking', hint: 'Breaks down problems step by step' },
+  { key: 'persistence', label: 'Persistence & Grit', hint: 'Keeps iterating when something fails' },
+  { key: 'problem_solving', label: 'Problem Solving', hint: 'Finds practical ways around obstacles' },
+  { key: 'creativity', label: 'Creativity', hint: 'Tries original ideas or designs' },
+  { key: 'collaboration', label: 'Collaboration', hint: 'Supports peers and shares tasks well' },
+  { key: 'communication', label: 'Communication', hint: 'Explains their work clearly' },
+  { key: 'initiative', label: 'Initiative', hint: 'Takes ownership without waiting to be asked' },
 ];
+
+const INTENSITY_LABELS: Record<number, string> = {
+  1: '1 · Emerging',
+  2: '2 · Growing',
+  3: '3 · Strong',
+  4: '4 · Standout',
+};
 
 interface QueueItem {
   artifactId: string;
@@ -36,8 +58,8 @@ interface QueueItem {
 
 export default function MentorDashboardPage() {
   const [queue, setQueue] = useState<QueueItem[]>([]);
-  const [learnerId, setLearnerId] = useState('');
-  const [cohortId, setCohortId] = useState('00000000-0000-0000-0000-000000000001');
+  const [learnerId, setLearnerId] = useState(DEMO_EXPLORER_ID);
+  const [cohortId, setCohortId] = useState(DEMO_COHORT_ID);
   const [artifactId, setArtifactId] = useState('');
   const [qualityScore, setQualityScore] = useState('0.90');
   const [overallComment, setOverallComment] = useState('');
@@ -63,7 +85,10 @@ export default function MentorDashboardPage() {
 
   const loadQueue = useCallback(async () => {
     try {
-      const res = await fetch(`${API_URL}/v1/mentorship/queue`);
+      const { data } = await createClient().auth.getSession();
+      const token = data.session?.access_token;
+      const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+      const res = await fetch(`${API_URL}/v1/mentorship/queue`, { headers });
       if (res.ok) setQueue((await res.json()) as QueueItem[]);
     } catch {
       // Offline-safe: queue is optional when mentor is working offline
@@ -122,9 +147,14 @@ export default function MentorDashboardPage() {
         ...(overallComment.trim() ? { overallComment: overallComment.trim() } : {}),
         capturedOfflineAt: new Date().toISOString(),
       });
-      await syncEngine.syncAll();
+      const syncResult = await syncEngine.syncAll();
       await loadQueue();
-      setNotice('Micro-rubric queued in IndexedDB and synced to the cryptographic evidence ledger.');
+
+      if (syncResult.syncedCount > 0 && syncResult.failedCount === 0) {
+        setNotice('Confirmed! Your 3-minute observation was synced and sealed on the server.');
+      } else {
+        setNotice('Saved on this device in the offline outbox. It will sync when your connection and mentor session are active.');
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to submit micro-rubric.');
     } finally {
@@ -133,133 +163,231 @@ export default function MentorDashboardPage() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 p-6">
-      <div className="mx-auto max-w-5xl space-y-6">
-        <div className="flex flex-wrap items-center justify-between gap-4">
+    <main className="min-h-screen px-4 py-8 sm:px-6 lg:px-10">
+      <div className="mx-auto max-w-7xl space-y-8">
+        <div className="spark-enter flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-slate-200/80 bg-white p-6 shadow-sm sm:p-8">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">Mentor 3-Minute Mobile-Offline Micro-Rubric</h1>
-            <p className="text-sm text-slate-600">
-              Verify learner artifacts and record evolving developmental signals (offline-first via IndexedDB).
+            <p className="mb-2 text-xs font-bold uppercase tracking-[0.14em] text-spark-700">Mentor workspace</p>
+            <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">
+              Help young people see their progress.
+            </h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+              Review learner work in under 3 minutes, share encouraging feedback, and notice strengths as they develop.
             </p>
           </div>
           <Button variant="outline" onClick={() => void loadQueue()}>
-            Refresh Pending Queue ({queue.length})
+            Refresh Review Queue ({queue.length})
           </Button>
         </div>
 
-        {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
-        {notice && <p role="status" className="rounded-lg bg-green-50 p-3 text-sm text-green-800">{notice}</p>}
+        {error && <p role="alert" className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-800">{error}</p>}
+        {notice && <p role="status" className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-medium text-emerald-900">{notice}</p>}
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Pending Learner Artifact Verification Queue</CardTitle>
-            <CardDescription>Click any unverified submission to load its Learner &amp; Artifact UUIDs into the evaluator.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {queue.length === 0 ? (
-              <p className="text-sm text-slate-500">All submitted artifacts have been verified by a mentor.</p>
-            ) : (
-              queue.map((item) => (
-                <div
-                  key={item.artifactId}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-3 text-sm"
-                >
-                  <div>
-                    <p className="font-medium text-slate-900">
-                      {item.title} <span className="text-xs text-slate-500">({item.learnerName} • {item.educationStage})</span>
-                    </p>
-                    <p className="text-xs text-slate-500">
-                      Skills: {item.skillCodes.join(', ') || 'None'} • Ledger #{item.ledgerSeq ?? '—'}
-                    </p>
-                  </div>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setLearnerId(item.learnerId);
-                      setArtifactId(item.artifactId);
-                    }}
-                  >
-                    Load into Evaluator
-                  </Button>
+        <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
+          <Card className="h-fit">
+            <CardHeader>
+              <div className="flex items-start gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700">
+                  <FolderKanban size={19} aria-hidden="true" />
+                </span>
+                <div>
+                  <CardTitle className="text-base">Work waiting for your review</CardTitle>
+                  <CardDescription>Select a learner submission to pre-fill the observation form.</CardDescription>
                 </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Evaluate Learner Evidence &amp; Behavioural Signals</CardTitle>
-            <CardDescription>
-              Signals are treated strictly as evolving developmental observations, never permanent labels.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-3 md:grid-cols-3">
-              <Input value={learnerId} onChange={(e) => setLearnerId(e.target.value)} placeholder="Learner UUID" />
-              <Input value={cohortId} onChange={(e) => setCohortId(e.target.value)} placeholder="Cohort UUID" />
-              <Input value={artifactId} onChange={(e) => setArtifactId(e.target.value)} placeholder="Artifact UUID (optional)" />
-            </div>
-
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-700">
-                Verified Quality Score (0.00 – 1.00): <span className="font-bold">{qualityScore}</span>
-              </label>
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.02"
-                value={qualityScore}
-                onChange={(e) => setQualityScore(e.target.value)}
-                className="w-full"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-slate-700">Observed Behavioural Signals (Intensity 1–4):</p>
-              <div className="grid gap-2 sm:grid-cols-2">
-                {SIGNALS.map((sig) => {
-                  const active = sig.key in selectedSignals;
-                  const intensity = selectedSignals[sig.key] ?? 3;
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {queue.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-200 p-6 text-center text-sm text-slate-500">
+                  <p>No unverified submissions in your queue right now (or sign in with a Mentor account to load cohort submissions).</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLearnerId(DEMO_EXPLORER_ID);
+                      setCohortId(DEMO_COHORT_ID);
+                    }}
+                    className="mt-3 inline-flex rounded-xl bg-spark-50 px-3.5 py-2 text-xs font-bold text-spark-800 hover:bg-spark-100"
+                  >
+                    Pre-fill 13yo Explorer Demo Learner
+                  </button>
+                </div>
+              ) : (
+                queue.map((item) => {
+                  const selected = artifactId === item.artifactId;
                   return (
-                    <div key={sig.key} className={`flex items-center justify-between rounded-lg border p-2.5 text-sm ${active ? 'border-spark-500 bg-spark-50' : 'border-slate-200 bg-white'}`}>
-                      <button type="button" onClick={() => toggleSignal(sig.key)} className="text-left font-medium">
-                        {sig.label}
-                      </button>
-                      {active ? (
-                        <div className="flex gap-1">
-                          {[1, 2, 3, 4].map((lvl) => (
-                            <button
-                              key={lvl}
-                              type="button"
-                              onClick={() => setIntensity(sig.key, lvl)}
-                              className={`h-6 w-6 rounded text-xs font-semibold ${intensity === lvl ? 'bg-spark-500 text-white' : 'bg-white border border-slate-200'}`}
-                            >
-                              {lvl}
-                            </button>
+                    <div
+                      key={item.artifactId}
+                      className={`rounded-2xl border p-4 text-sm transition-all ${
+                        selected ? 'border-spark-500 bg-spark-50/60 ring-2 ring-spark-100' : 'border-slate-200 bg-white'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="font-bold text-slate-900">{item.title}</p>
+                          <p className="mt-0.5 text-xs text-slate-500">
+                            {item.learnerName} · {item.educationStage}
+                          </p>
+                        </div>
+                        <Badge variant="developing">{item.artifactType.replace(/_/g, ' ')}</Badge>
+                      </div>
+                      {item.description && <p className="mt-2 text-xs text-slate-600">{item.description}</p>}
+                      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex flex-wrap gap-1">
+                          {item.skillCodes.map((code) => (
+                            <Badge key={code} variant="secondary">
+                              {code.replace(/^SKILL_|^SIG_/, '').replace(/_/g, ' ')}
+                            </Badge>
                           ))}
                         </div>
-                      ) : (
-                        <Badge variant="outline">Off</Badge>
-                      )}
+                        <Button
+                          size="sm"
+                          variant={selected ? 'default' : 'outline'}
+                          onClick={() => {
+                            setLearnerId(item.learnerId);
+                            setArtifactId(item.artifactId);
+                          }}
+                        >
+                          {selected ? 'Selected' : 'Review project'}
+                        </Button>
+                      </div>
                     </div>
                   );
-                })}
+                })
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <div className="flex items-start gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-spark-50 text-spark-700">
+                  <UsersRound size={19} aria-hidden="true" />
+                </span>
+                <div>
+                  <CardTitle className="text-base">Share your 3-minute observation</CardTitle>
+                  <CardDescription>
+                    Focus on what you observed in this activity. These are growing signals, never permanent labels.
+                  </CardDescription>
+                </div>
               </div>
-            </div>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <label className="block space-y-1 text-xs font-semibold text-slate-700">
+                  Learner ID
+                  <Input value={learnerId} onChange={(e) => setLearnerId(e.target.value)} placeholder="Learner UUID" />
+                </label>
+                <label className="block space-y-1 text-xs font-semibold text-slate-700">
+                  Cohort ID
+                  <Input value={cohortId} onChange={(e) => setCohortId(e.target.value)} placeholder="Cohort UUID" />
+                </label>
+                <label className="block space-y-1 text-xs font-semibold text-slate-700">
+                  Project ID <span className="font-normal text-slate-400">(optional)</span>
+                  <Input value={artifactId} onChange={(e) => setArtifactId(e.target.value)} placeholder="Artifact UUID" />
+                </label>
+              </div>
 
-            <Input
-              value={overallComment}
-              onChange={(e) => setOverallComment(e.target.value)}
-              placeholder="Concise mentor observation note (max 500 chars)"
-            />
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <label className="text-sm font-bold text-slate-900">
+                    Project Quality &amp; Effort: <span className="text-spark-700">{Math.round(Number(qualityScore) * 100)}%</span>
+                  </label>
+                  <div className="flex gap-1.5">
+                    {['0.70', '0.80', '0.90', '0.95'].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => setQualityScore(preset)}
+                        className={`rounded-lg px-2.5 py-1 text-xs font-bold transition ${
+                          qualityScore === preset ? 'bg-spark-600 text-white' : 'bg-white text-slate-700 border border-slate-200'
+                        }`}
+                      >
+                        {Math.round(Number(preset) * 100)}%
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.02"
+                  value={qualityScore}
+                  onChange={(e) => setQualityScore(e.target.value)}
+                  className="w-full"
+                />
+              </div>
 
-            <Button className="w-full" disabled={busy || !learnerId || !cohortId} onClick={() => void submitRubric()}>
-              {busy ? 'Queueing & Syncing Rubric…' : 'Seal 3-Minute Micro-Rubric'}
-            </Button>
-          </CardContent>
-        </Card>
+              <div className="space-y-2.5">
+                <p className="text-sm font-bold text-slate-900">
+                  Developmental signals you noticed <span className="text-xs font-normal text-slate-500">(click to toggle, then rate 1–4)</span>
+                </p>
+                <div className="space-y-2">
+                  {SIGNALS.map((sig) => {
+                    const active = sig.key in selectedSignals;
+                    const intensity = selectedSignals[sig.key] ?? 3;
+                    return (
+                      <div
+                        key={sig.key}
+                        className={`flex flex-wrap items-center justify-between gap-3 rounded-2xl border p-3.5 text-sm transition-all ${
+                          active ? 'border-spark-500 bg-spark-50/60' : 'border-slate-200 bg-white'
+                        }`}
+                      >
+                        <button type="button" onClick={() => toggleSignal(sig.key)} className="flex items-center gap-2.5 text-left">
+                          <span
+                            className={`flex h-5 w-5 items-center justify-center rounded-md border ${
+                              active ? 'border-spark-600 bg-spark-600 text-white' : 'border-slate-300 bg-white'
+                            }`}
+                          >
+                            {active && <Check size={13} aria-hidden="true" />}
+                          </span>
+                          <div>
+                            <p className="font-bold text-slate-900">{sig.label}</p>
+                            <p className="text-xs text-slate-500">{sig.hint}</p>
+                          </div>
+                        </button>
+                        {active ? (
+                          <div className="flex flex-wrap gap-1.5">
+                            {[1, 2, 3, 4].map((lvl) => (
+                              <button
+                                key={lvl}
+                                type="button"
+                                onClick={() => setIntensity(sig.key, lvl)}
+                                className={`rounded-xl px-2.5 py-1.5 text-xs font-bold transition ${
+                                  intensity === lvl
+                                    ? 'bg-spark-600 text-white shadow-sm'
+                                    : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
+                                }`}
+                              >
+                                {INTENSITY_LABELS[lvl]}
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <Badge variant="outline">Not selected</Badge>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <label className="block space-y-1.5 text-sm font-semibold text-slate-800">
+                Encouraging note for the learner &amp; family
+                <Input
+                  value={overallComment}
+                  onChange={(e) => setOverallComment(e.target.value)}
+                  placeholder="What stood out in how they approached this project? (max 500 chars)"
+                />
+              </label>
+
+              <Button size="lg" className="w-full" disabled={busy || !learnerId || !cohortId} onClick={() => void submitRubric()}>
+                <Sparkles size={16} className="mr-2" aria-hidden="true" />
+                {busy ? 'Saving observation…' : 'Save 3-Minute Observation'}
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </main>
   );
