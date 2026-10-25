@@ -196,12 +196,27 @@ export default function InternalAdminAccessPage() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
-                <KeyRound className="h-3.5 w-3.5 text-spark-600" />
-                <span>
-                  Operator Security Key {mode === 'signin' ? '(optional if already provisioned)' : '(required)'}
-                </span>
-              </label>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+                  <KeyRound className="h-3.5 w-3.5 text-spark-600" />
+                  <span>
+                    Operator Security Key {mode === 'signin' ? '(optional if already provisioned)' : '(required)'}
+                  </span>
+                </label>
+                {typeof window !== 'undefined' &&
+                  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAdminSecret('sparktrack_super_admin_bootstrap_secret_2026_v1');
+                        if (!fullName.trim()) setFullName('SparkTrack Platform Founder');
+                      }}
+                      className="rounded-lg border border-spark-200 bg-spark-50 px-2 py-0.5 text-[11px] font-bold text-spark-700 hover:bg-spark-100"
+                    >
+                      Fill Local Dev Key
+                    </button>
+                  )}
+              </div>
               <Input
                 type="password"
                 value={adminSecret}

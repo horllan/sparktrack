@@ -1,0 +1,63 @@
+name: Promote & Verify Production (Stage 4)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_staging_verified:
+        description: 'Type STAGING_VERIFIED to confirm Stage 3 passed all smoke & ledger checks'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  production-gate:
+    name: Stage 4 Production Release Gate
+    runs-on: ubuntu-latest
+    environment: production
+    if: ${{ inputs.confirm_staging_verified == 'STAGING_VERIFIED' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install pnpm 9
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: Run full release verification & high-severity security audit
+        run: |
+          pnpm lint
+          pnpm typecheck
+          pnpm build
+          pnpm audit --audit-level=high
+
+      - name: Apply transactional production migrations (never runs demo seed)
+        if: ${{ env.DIRECT_DATABASE_URL != '' }}
+        env:
+          SPARKTRACK_STAGE: production
+          DIRECT_DATABASE_URL: ${{ secrets.PROD_DIRECT_DATABASE_URL }}
+        run: |
+          pnpm db:status
+          pnpm db:migrate
+
+      - name: Verify production API health, Upstash Redis & SHA-256 ledger integrity
+        if: ${{ vars.PROD_API_HEALTH_URL != '' }}
+        env:
+          HEALTH_URL: ${{ vars.PROD_API_HEALTH_URL }}
+        run: |
+          response=$(curl --fail --silent --show-error "$HEALTH_URL")
+          echo "$response"
+          echo "$response" | grep -q '"ledgerIntegrityValid":true'
+

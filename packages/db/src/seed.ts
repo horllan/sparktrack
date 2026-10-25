@@ -17,6 +17,12 @@ export const DEMO_IDS = {
 } as const;
 
 async function main() {
+  const stage = process.env.SPARKTRACK_STAGE || process.env.NODE_ENV || 'development';
+  if (stage === 'production' && !process.argv.includes('--allow-demo-seed')) {
+    throw new Error(
+      'Refusing to seed synthetic demo learner profiles in Stage 4 (production). Pass --allow-demo-seed only for non-production sandboxes.',
+    );
+  }
   const url = process.env.DIRECT_DATABASE_URL || process.env.DATABASE_URL;
   if (!url) throw new Error('DATABASE_URL or DIRECT_DATABASE_URL is required to run db:seed');
 

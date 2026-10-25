@@ -197,11 +197,19 @@ class HealthController {
         timestamp: new Date().toISOString(),
       });
     }
+    const stage = process.env.SPARKTRACK_STAGE ?? process.env.NODE_ENV ?? 'development';
+    const r2Configured = Boolean(
+      process.env.R2_ACCOUNT_ID &&
+        process.env.R2_ACCESS_KEY_ID &&
+        !process.env.R2_ACCOUNT_ID.includes('your-'),
+    );
     return {
       status: 'ok',
+      stage,
       database: 'connected',
       redis: redisPing.status,
       redisLatencyMs: redisPing.latencyMs ?? null,
+      r2Storage: r2Configured ? 'configured' : 'fallback',
       ledgerBlocks: chain.length,
       ledgerIntegrityValid: true,
       timestamp: new Date().toISOString(),
