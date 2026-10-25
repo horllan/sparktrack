@@ -220,7 +220,7 @@ class SupportController {
   }
 
   @ApiBearerAuth()
-  @Roles('SUPER_ADMIN', 'SCHOOL_ADMIN')
+  @Roles('SUPER_ADMIN')
   @Get('tickets')
   @ApiOperation({ summary: 'Employee & Operations queue: list support, partnership, and DPO compliance tickets' })
   listTickets(@Query('status') status?: string) {
@@ -228,7 +228,7 @@ class SupportController {
   }
 
   @ApiBearerAuth()
-  @Roles('SUPER_ADMIN', 'SCHOOL_ADMIN')
+  @Roles('SUPER_ADMIN')
   @Patch('tickets/:id')
   @ApiOperation({ summary: 'Employee & Operations action: update ticket status, priority, and resolution notes' })
   async updateTicket(
@@ -251,4 +251,3 @@ class SupportController {
   controllers: [SupportController],
 })
 export class SupportModule {}
-

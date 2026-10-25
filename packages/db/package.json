@@ -14,8 +14,8 @@
   },
   "dependencies": {
     "dotenv": "^16.4.0",
-    "drizzle-orm": "^0.38.0",
-    "kysely": "^0.27.0",
+    "drizzle-orm": "^0.45.2",
+    "kysely": "^0.28.17",
     "pg": "^8.13.0",
     "postgres": "^3.4.0"
   },
@@ -25,7 +25,6 @@
     "@types/pg": "^8.11.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
-    "vitest": "^3.0.0"
+    "vitest": "^4.1.12"
   }
 }
-

@@ -26,7 +26,7 @@ const RecordTelemetrySchema = z.object({
   learnerId: z.string().uuid(),
   eventType: z.string().min(2).max(80),
   durationSeconds: z.number().int().nonnegative().max(86_400).optional(),
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 @ApiTags('learning')
@@ -79,7 +79,7 @@ class LearningController {
 
   @Public()
   @Get('institutions/analytics')
-  @ApiOperation({ summary: 'Aggregate cohort capability progression, NDPA-gated talent pool, and ledger audit status' })
+  @ApiOperation({ summary: 'Aggregate cohort capability progression and ledger audit status' })
   async institutionAnalytics() {
     const [summary, chain] = await Promise.all([
       institutionQueries.analyticsSummary(this.db),

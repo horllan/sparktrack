@@ -12,7 +12,7 @@ export const ReportSectionSchema = z.object({
   /** AI-generated narrative content (Gemini synthesis) */
   narrative: z.string(),
   /** Supporting data points used in synthesis */
-  supportingData: z.record(z.unknown()).optional(),
+  supportingData: z.record(z.string(), z.unknown()).optional(),
   /** Confidence score for this section (0-1) */
   confidence: z.number().min(0).max(1).optional(),
 });

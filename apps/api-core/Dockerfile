@@ -1,8 +1,10 @@
 # ---- Stage 1: Pruned monorepo ----
 FROM node:20-alpine AS pruner
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
+ENV PNPM_HOME=/pnpm
+ENV PATH=$PNPM_HOME:$PATH
 WORKDIR /app
-RUN pnpm add -g turbo
+RUN mkdir -p "$PNPM_HOME" && pnpm config set global-bin-dir "$PNPM_HOME" && pnpm add -g turbo
 COPY . .
 RUN turbo prune @sparktrack-app/api-core --docker
 

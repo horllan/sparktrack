@@ -2,13 +2,16 @@ name: SparkTrack CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, master, develop]
   pull_request:
-    branches: [main, develop]
+    branches: [main, master, develop]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
+permissions:
+  contents: read
 
 env:
   TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
@@ -70,8 +73,30 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      - name: Build
+        run: pnpm build
+
       - name: Test
         env:
           DATABASE_URL: postgresql://postgres:sparktrack_ci@localhost:5432/sparktrack_test
           REDIS_URL: redis://localhost:6379
         run: pnpm test
+
+      - name: Audit dependencies
+        run: pnpm audit --audit-level=high
+
+  container-build:
+    name: Build API container (validation only)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build API image without publishing
+        run: docker buildx build --file apps/api-core/Dockerfile --tag sparktrack-api:ci --load .

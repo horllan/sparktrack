@@ -60,14 +60,7 @@ interface InstitutionAnalytics {
     learnerCount: number;
     averageScore: number;
   }>;
-  optInTalentPool: Array<{
-    learnerId: string;
-    educationStage: string;
-    schoolName: string | null;
-    declaredInterests: string[];
-    verifiedArtifacts: number;
-    topSkills: Array<{ skill: string; level: string; score: number }>;
-  }>;
+  optedInLearnerCount: number;
   organisations: Array<{
     id: string;
     name: string;
@@ -472,7 +465,7 @@ export default function SchoolDashboardPage() {
               </Card>
             </div>
 
-            {/* Cohort Skill Distribution & Opt-In Talent Discovery */}
+            {/* Aggregate cohort metrics */}
             <div className="grid gap-6 lg:grid-cols-2">
               <Card>
                 <CardHeader>
@@ -523,47 +516,14 @@ export default function SchoolDashboardPage() {
 
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-base">Guardian Opt-In Talent Discovery Pool</CardTitle>
+                  <CardTitle className="text-base">Guardian Opt-In Talent Discovery</CardTitle>
                   <CardDescription>
-                    Strictly limited to learners whose guardian verified SMS consent AND explicitly enabled partner
-                    talent discovery (NDPA 2023 child-safety compliant).
+                    Aggregate count only. Learner-level discovery profiles are not exposed through this public endpoint.
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-3">
-                  {data.optInTalentPool.length === 0 ? (
-                    <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-6 text-center text-sm text-slate-500">
-                      No learners have opted into external partner talent discovery yet (all minors default to private).
-                    </div>
-                  ) : (
-                    data.optInTalentPool.map((learner) => (
-                      <div
-                        key={learner.learnerId}
-                        className="rounded-2xl border border-slate-200/90 bg-white p-4 text-sm shadow-sm"
-                      >
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <span className="font-bold text-slate-900">
-                            {learner.educationStage} • {learner.schoolName ?? 'Independent Explorer'}
-                          </span>
-                          <Badge variant="success">{learner.verifiedArtifacts} verified projects</Badge>
-                        </div>
-                        <p className="mt-1.5 text-xs text-slate-500">
-                          Learner Ref: <code className="font-mono">{learner.learnerId.slice(0, 8)}…</code> • Interests:{' '}
-                          <span className="font-medium text-slate-700">
-                            {learner.declaredInterests.join(', ') || 'Exploring'}
-                          </span>
-                        </p>
-                        {learner.topSkills.length > 0 && (
-                          <div className="mt-3 flex flex-wrap gap-1.5">
-                            {learner.topSkills.slice(0, 4).map((s, idx) => (
-                              <Badge key={`${s.skill}-${idx}`} variant="default">
-                                {s.skill}: {s.level} ({Math.round(Number(s.score) * 100)}%)
-                              </Badge>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ))
-                  )}
+                <CardContent>
+                  <p className="text-3xl font-extrabold text-slate-900">{data.optedInLearnerCount}</p>
+                  <p className="mt-1 text-sm text-slate-500">Learners opted in to partner discovery</p>
                 </CardContent>
               </Card>
             </div>

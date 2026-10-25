@@ -1,6 +1,19 @@
 import { createHmac } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { verifyPaystackSignature, verifyStripeSignature } from './billing.module';
+import { EnrolLearnerSchema, verifyPaystackSignature, verifyStripeSignature } from './billing.module';
+
+describe('Billing enrolment validation', () => {
+  it('rejects client-selected free-pilot and scholarship activation', () => {
+    const base = {
+      learnerId: '11111111-1111-4111-8111-111111111111',
+      cohortId: '22222222-2222-4222-8222-222222222222',
+    };
+
+    expect(EnrolLearnerSchema.safeParse({ ...base, paymentProvider: 'PAYSTACK' }).success).toBe(true);
+    expect(EnrolLearnerSchema.safeParse({ ...base, paymentProvider: 'FREE_PILOT' }).success).toBe(false);
+    expect(EnrolLearnerSchema.safeParse({ ...base, paymentProvider: 'SCHOLARSHIP' }).success).toBe(false);
+  });
+});
 
 describe('Billing webhook cryptographic signature verification', () => {
   it('verifies valid Paystack HMAC-SHA512 signatures and rejects tampered payloads', () => {
@@ -25,4 +38,3 @@ describe('Billing webhook cryptographic signature verification', () => {
     expect(verifyStripeSignature(payload, `t=${timestamp},v1=deadbeef`, secret)).toBe(false);
   });
 });
-

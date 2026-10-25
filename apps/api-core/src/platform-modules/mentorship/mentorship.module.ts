@@ -1,4 +1,16 @@
-import { Body, Controller, Get, Inject, Module, NotFoundException, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  ForbiddenException,
+  Get,
+  Inject,
+  Module,
+  NotFoundException,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { mentorshipQueries, type SparkTrackDatabase } from '@sparktrack/db';
 import type { Kysely } from 'kysely';
@@ -8,14 +20,12 @@ import { KYSELY } from '../../common/database/database.module';
 
 const AssignMentorSchema = z.object({
   mentorId: z.string().uuid(),
-  mentorName: z.string().min(2).max(120).optional(),
   cohortId: z.string().uuid(),
   learnerId: z.string().uuid().nullable().optional(),
 });
 
 const VerifyArtifactSchema = z.object({
   qualityScore: z.number().min(0).max(1),
-  mentorName: z.string().min(2).max(120).optional(),
 });
 
 @ApiTags('mentorship')
@@ -27,17 +37,23 @@ class MentorshipController {
   @Get('queue')
   @Roles('MENTOR', 'SCHOOL_ADMIN', 'SUPER_ADMIN')
   @ApiOperation({ summary: 'List learner artifacts awaiting mentor verification and rubric scoring' })
-  queue(@Query('limit') limit?: string) {
+  queue(@CurrentUser() user: AuthUser, @Query('limit') limit?: string) {
     const parsedLimit = limit ? Math.min(Math.max(Number(limit) || 25, 1), 100) : 25;
-    return mentorshipQueries.pendingQueue(this.db, parsedLimit);
+    return mentorshipQueries.pendingQueue(
+      this.db,
+      { userId: user.id, role: user.role, organisationId: user.organisationId },
+      parsedLimit,
+    );
   }
 
   @Post('assignments')
   @Roles('SCHOOL_ADMIN', 'SUPER_ADMIN')
   @ApiOperation({ summary: 'Assign a mentor to a programme cohort or specific learner' })
-  assign(@Body() body: unknown) {
+  async assign(@CurrentUser() user: AuthUser, @Body() body: unknown) {
     const parsed = AssignMentorSchema.parse(body);
-    return mentorshipQueries.assignMentor(this.db, parsed);
+    const result = await mentorshipQueries.assignMentor(this.db, { ...parsed, actor: user });
+    if (!result) throw new ForbiddenException('The mentor, cohort, or learner is not eligible for this assignment.');
+    return result;
   }
 
   @Post('artifacts/:artifactId/verify')
@@ -52,7 +68,7 @@ class MentorshipController {
     const updated = await mentorshipQueries.verifyArtifact(this.db, {
       artifactId,
       mentorId: user.id,
-      mentorName: parsed.mentorName,
+      actorRole: user.role,
       qualityScore: parsed.qualityScore,
     });
     if (!updated) throw new NotFoundException('Artifact not found');

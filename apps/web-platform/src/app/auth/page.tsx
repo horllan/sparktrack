@@ -126,6 +126,9 @@ function AuthHubContent() {
         router.push('/student/onboarding');
         return;
       }
+      if (mode === 'signup' && selectedRole !== 'PARENT') {
+        throw new Error('School, partner, and mentor accounts require an invitation or staff approval. Contact SparkTrack to request access.');
+      }
 
       const supabase = createClient();
       const authRes =
@@ -542,4 +545,3 @@ export default function AuthPage() {
     </Suspense>
   );
 }
-

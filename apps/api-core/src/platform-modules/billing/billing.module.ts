@@ -6,7 +6,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { billingQueries, type SparkTrackDatabase } from '@sparktrack/db';
 import type { Kysely } from 'kysely';
 import { z } from 'zod';
-import { Public, Roles } from '../../common/auth/auth.guard';
+import { CurrentUser, LearnerAccessService, Public, Roles, type AuthUser } from '../../common/auth/auth.guard';
 import { KYSELY } from '../../common/database/database.module';
 
 const CreateCohortSchema = z.object({
@@ -21,14 +21,13 @@ const CreateCohortSchema = z.object({
   priceUsd: z.number().int().nonnegative().nullable().optional(),
 });
 
-const EnrolLearnerSchema = z.object({
+export const EnrolLearnerSchema = z.object({
   learnerId: z.string().uuid(),
   cohortId: z.string().uuid(),
-  paymentProvider: z.enum(['PAYSTACK', 'STRIPE', 'INSTITUTIONAL_INVOICE', 'SCHOLARSHIP', 'FREE_PILOT']),
+  paymentProvider: z.enum(['PAYSTACK', 'STRIPE', 'INSTITUTIONAL_INVOICE']),
   paymentReference: z.string().min(3).max(120).nullable().optional(),
   paymentAmount: z.number().int().nonnegative().nullable().optional(),
   paymentCurrency: z.string().length(3).default('NGN'),
-  scholarshipTag: z.string().max(80).nullable().optional(),
 });
 
 export function verifyPaystackSignature(payloadJson: string, signatureHeader: string | undefined, secret: string): boolean {
@@ -60,6 +59,7 @@ class BillingController {
   constructor(
     @Inject(KYSELY) private readonly db: Kysely<SparkTrackDatabase>,
     @Inject(NestConfigService) private readonly config: ConfigService,
+    private readonly access: LearnerAccessService,
   ) {}
 
   @Public()
@@ -84,10 +84,11 @@ class BillingController {
   @ApiBearerAuth()
   @Post('enrolments')
   @Roles('PARENT', 'SCHOOL_ADMIN', 'SUPER_ADMIN')
-  @ApiOperation({ summary: 'Enrol a learner into a programme cohort (supports Free Pilot, Scholarship, Paystack, Stripe)' })
-  enrol(@Body() body: unknown) {
+  @ApiOperation({ summary: 'Create a pending learner enrolment for payment or institutional invoicing' })
+  async enrol(@CurrentUser() user: AuthUser, @Body() body: unknown) {
     const parsed = EnrolLearnerSchema.parse(body);
-    return billingQueries.enrolLearner(this.db, parsed);
+    await this.access.assertCanAccess(user, parsed.learnerId);
+    return billingQueries.enrolLearner(this.db, { ...parsed, enrolledBy: user.id });
   }
 
   @Public()

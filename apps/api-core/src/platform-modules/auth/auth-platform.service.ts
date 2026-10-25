@@ -150,12 +150,10 @@ export class AuthPlatformService {
   async registerRole(
     user: AuthUser,
     payload: {
-      role: 'PARENT' | 'SCHOOL_ADMIN' | 'ORG_PARTNER' | 'MENTOR';
+      role: 'PARENT';
       fullName: string;
       email?: string;
       phoneNumber?: string;
-      organisationName?: string;
-      organisationType?: 'SCHOOL' | 'NGO' | 'TRAINING_PROVIDER' | 'EMPLOYER' | 'GOVERNMENT';
     },
   ) {
     const result = await onboardingQueries.registerRole(this.db, user.id, payload);

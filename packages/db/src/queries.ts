@@ -338,12 +338,10 @@ export const onboardingQueries = {
     db: Db,
     userId: string,
     p: {
-      role: 'PARENT' | 'SCHOOL_ADMIN' | 'ORG_PARTNER' | 'MENTOR';
+      role: 'PARENT';
       fullName: string;
       email?: string;
       phoneNumber?: string;
-      organisationName?: string;
-      organisationType?: 'SCHOOL' | 'NGO' | 'TRAINING_PROVIDER' | 'EMPLOYER' | 'GOVERNMENT';
     },
   ) {
     return db.transaction().execute(async (trx) => {
@@ -355,16 +353,7 @@ export const onboardingQueries = {
         return { status: 'role_conflict' as const, existingRole: existing.rows[0].role };
       }
 
-      let organisationId = existing.rows[0]?.organisation_id ?? null;
-      if ((p.role === 'SCHOOL_ADMIN' || p.role === 'ORG_PARTNER') && p.organisationName && !organisationId) {
-        const orgType = p.organisationType ?? (p.role === 'SCHOOL_ADMIN' ? 'SCHOOL' : 'NGO');
-        const org = await sql<{ id: string }>`
-          INSERT INTO core.organisations (name, org_type, country_code, subscription_tier)
-          VALUES (${p.organisationName.trim()}, ${orgType}, 'NG', 'FREE_PILOT')
-          RETURNING id
-        `.execute(trx);
-        organisationId = org.rows[0]!.id;
-      }
+      const organisationId = existing.rows[0]?.organisation_id ?? null;
 
       await sql`
         INSERT INTO core.users (id, role, full_name, email, phone_number, organisation_id, is_active)
@@ -984,7 +973,44 @@ export const learningQueries = {
 };
 
 export const mentorshipQueries = {
-  async pendingQueue(db: Db, limit = 25) {
+  async pendingQueue(
+    db: Db,
+    actor: {
+      userId: string;
+      role: 'LEARNER' | 'PARENT' | 'MENTOR' | 'SCHOOL_ADMIN' | 'ORG_PARTNER' | 'SUPER_ADMIN';
+      organisationId: string | null;
+    },
+    limit = 25,
+  ) {
+    const accessScope =
+      actor.role === 'MENTOR'
+        ? sql`EXISTS (
+            SELECT 1
+            FROM core.mentor_assignments ma
+            WHERE ma.mentor_id = ${actor.userId}::uuid
+              AND ma.is_active = TRUE
+              AND (
+                ma.learner_id = a.learner_id
+                OR (
+                  ma.learner_id IS NULL
+                  AND (
+                    ma.cohort_id = a.programme_cohort_id
+                    OR EXISTS (
+                      SELECT 1
+                      FROM core.cohort_enrolments ce
+                      WHERE ce.learner_id = a.learner_id
+                        AND ce.cohort_id = ma.cohort_id
+                    )
+                  )
+                )
+              )
+          )`
+        : actor.role === 'SCHOOL_ADMIN'
+          ? sql`lp.current_school_id = ${actor.organisationId}::uuid`
+          : actor.role === 'SUPER_ADMIN'
+            ? sql`TRUE`
+            : sql`FALSE`;
+
     const r = await sql<{
       artifact_id: string;
       learner_id: string;
@@ -1017,6 +1043,8 @@ export const mentorshipQueries = {
       JOIN core.users u ON u.id = a.learner_id
       LEFT JOIN evidence.cryptographic_ledger cl ON cl.artifact_id = a.id
       WHERE a.mentor_verifier_id IS NULL
+        AND lp.consent_status = 'VERIFIED_ACTIVE'
+        AND (${accessScope})
       ORDER BY a.captured_offline_at DESC
       LIMIT ${limit}
     `.execute(db);
@@ -1039,21 +1067,50 @@ export const mentorshipQueries = {
 
   async verifyArtifact(
     db: Db,
-    p: { artifactId: string; mentorId: string; mentorName?: string; qualityScore: number },
+    p: {
+      artifactId: string;
+      mentorId: string;
+      actorRole: 'LEARNER' | 'PARENT' | 'MENTOR' | 'SCHOOL_ADMIN' | 'ORG_PARTNER' | 'SUPER_ADMIN';
+      qualityScore: number;
+    },
   ) {
     return db.transaction().execute(async (trx) => {
-      await sql`
-        INSERT INTO core.users (id, role, full_name)
-        VALUES (${p.mentorId}::uuid, 'MENTOR'::core.user_role, ${p.mentorName ?? 'SparkTrack Mentor'})
-        ON CONFLICT (id) DO NOTHING
-      `.execute(trx);
-
       const updated = await sql<{ id: string; learner_id: string }>`
-        UPDATE evidence.artifacts
+        UPDATE evidence.artifacts a
         SET mentor_verifier_id = ${p.mentorId}::uuid,
             quality_score = ${p.qualityScore}
-        WHERE id = ${p.artifactId}::uuid
-        RETURNING id, learner_id
+        FROM core.learner_profiles lp
+        WHERE a.id = ${p.artifactId}::uuid
+          AND lp.learner_id = a.learner_id
+          AND lp.consent_status = 'VERIFIED_ACTIVE'
+          AND (
+            ${p.actorRole === 'SUPER_ADMIN'}
+            OR (
+              ${p.actorRole === 'MENTOR'}
+              AND EXISTS (
+              SELECT 1
+              FROM core.mentor_assignments ma
+              WHERE ma.mentor_id = ${p.mentorId}::uuid
+                AND ma.is_active = TRUE
+                AND (
+                  ma.learner_id = a.learner_id
+                  OR (
+                    ma.learner_id IS NULL
+                    AND (
+                      ma.cohort_id = a.programme_cohort_id
+                      OR EXISTS (
+                        SELECT 1
+                        FROM core.cohort_enrolments ce
+                        WHERE ce.learner_id = a.learner_id
+                          AND ce.cohort_id = ma.cohort_id
+                        )
+                      )
+                    )
+                  )
+                )
+            )
+          )
+        RETURNING a.id, a.learner_id
       `.execute(trx);
 
       const row = updated.rows[0];
@@ -1064,24 +1121,48 @@ export const mentorshipQueries = {
 
   async assignMentor(
     db: Db,
-    p: { mentorId: string; mentorName?: string; cohortId: string; learnerId?: string | null },
+    p: {
+      mentorId: string;
+      cohortId: string;
+      learnerId?: string | null;
+      actor: { id: string; role: string; organisationId: string | null };
+    },
   ) {
     return db.transaction().execute(async (trx) => {
-      await sql`
-        INSERT INTO core.users (id, role, full_name)
-        VALUES (${p.mentorId}::uuid, 'MENTOR'::core.user_role, ${p.mentorName ?? 'SparkTrack Mentor'})
-        ON CONFLICT (id) DO NOTHING
-      `.execute(trx);
-
       const ins = await sql<{ id: string }>`
         INSERT INTO core.mentor_assignments (mentor_id, cohort_id, learner_id, is_active)
-        VALUES (${p.mentorId}::uuid, ${p.cohortId}::uuid, ${p.learnerId ?? null}::uuid, TRUE)
+        SELECT mentor.id, cohort.id, ${p.learnerId ?? null}::uuid, TRUE
+        FROM core.users mentor
+        JOIN core.programme_cohorts cohort ON cohort.id = ${p.cohortId}::uuid
+        JOIN core.users actor ON actor.id = ${p.actor.id}::uuid
+        WHERE mentor.id = ${p.mentorId}::uuid
+          AND mentor.role = 'MENTOR'::core.user_role
+          AND mentor.is_active = TRUE
+          AND actor.is_active = TRUE
+          AND (
+            actor.role = 'SUPER_ADMIN'::core.user_role
+            OR (
+              actor.role = 'SCHOOL_ADMIN'::core.user_role
+              AND cohort.organisation_id = actor.organisation_id
+              AND (
+                ${p.learnerId ?? null}::uuid IS NULL
+                OR EXISTS (
+                  SELECT 1
+                  FROM core.learner_profiles lp
+                  JOIN core.cohort_enrolments ce ON ce.learner_id = lp.learner_id
+                  WHERE lp.learner_id = ${p.learnerId ?? null}::uuid
+                    AND lp.current_school_id = actor.organisation_id
+                    AND ce.cohort_id = cohort.id
+                )
+              )
+            )
+          )
         ON CONFLICT (mentor_id, cohort_id, COALESCE(learner_id, '00000000-0000-0000-0000-000000000000'::uuid))
         DO UPDATE SET is_active = TRUE
         RETURNING id
       `.execute(trx);
 
-      return { assignmentId: ins.rows[0]!.id };
+      return ins.rows[0] ? { assignmentId: ins.rows[0].id } : null;
     });
   },
 };
@@ -1179,17 +1260,14 @@ export const billingQueries = {
     p: {
       learnerId: string;
       cohortId: string;
-      paymentProvider: 'PAYSTACK' | 'STRIPE' | 'INSTITUTIONAL_INVOICE' | 'SCHOLARSHIP' | 'FREE_PILOT';
+      paymentProvider: 'PAYSTACK' | 'STRIPE' | 'INSTITUTIONAL_INVOICE';
       paymentReference?: string | null;
       paymentAmount?: number | null;
       paymentCurrency?: string;
-      scholarshipTag?: string | null;
+      enrolledBy: string;
     },
   ) {
     return db.transaction().execute(async (trx) => {
-      const immediate = p.paymentProvider === 'FREE_PILOT' || p.paymentProvider === 'SCHOLARSHIP';
-      const status = immediate ? 'ACTIVE' : 'PENDING_PAYMENT';
-
       const existing = await sql<{ id: string; enrolment_status: string }>`
         SELECT id, enrolment_status::text
         FROM core.cohort_enrolments
@@ -1207,30 +1285,21 @@ export const billingQueries = {
 
       const ins = await sql<{ id: string; enrolment_status: string }>`
         INSERT INTO core.cohort_enrolments (
-          learner_id, cohort_id, enrolment_status, payment_provider,
-          payment_reference, payment_amount, payment_currency, scholarship_tag
+          learner_id, cohort_id, enrolled_by, enrolment_status, payment_provider,
+          payment_reference, payment_amount, payment_currency
         )
         VALUES (
           ${p.learnerId}::uuid,
           ${p.cohortId}::uuid,
-          ${status}::core.enrolment_status,
+          ${p.enrolledBy}::uuid,
+          'PENDING_PAYMENT'::core.enrolment_status,
           ${p.paymentProvider}::core.payment_provider,
           ${p.paymentReference ?? null},
           ${p.paymentAmount ?? null},
-          ${p.paymentCurrency ?? 'NGN'},
-          ${p.scholarshipTag ?? null}
+          ${p.paymentCurrency ?? 'NGN'}
         )
         RETURNING id, enrolment_status::text
       `.execute(trx);
-
-      if (immediate) {
-        await sql`
-          UPDATE core.programme_cohorts
-          SET current_enrolment_count = current_enrolment_count + 1,
-              updated_at = NOW()
-          WHERE id = ${p.cohortId}::uuid
-        `.execute(trx);
-      }
 
       return {
         enrolmentId: ins.rows[0]!.id,
@@ -1299,7 +1368,7 @@ export const billingQueries = {
 
 export const institutionQueries = {
   async analyticsSummary(db: Db) {
-    const [counts, skills, talentPool, orgs] = await Promise.all([
+    const [counts, skills, talentPoolCount, orgs] = await Promise.all([
       sql<{
         total_learners: string;
         verified_learners: string;
@@ -1331,38 +1400,11 @@ export const institutionQueries = {
         GROUP BY n.code, n.name, n.category
         ORDER BY AVG(t.computed_score) DESC
       `.execute(db),
-      sql<{
-        learner_id: string;
-        education_stage: string;
-        school_name: string | null;
-        declared_interests: string[];
-        verified_artifacts: string;
-        top_skills: Array<{ skill: string; level: string; score: number }> | null;
-      }>`
-        SELECT
-          lp.learner_id,
-          lp.education_stage,
-          o.name AS school_name,
-          lp.declared_interests,
-          COUNT(DISTINCT a.id)::text AS verified_artifacts,
-          JSONB_AGG(
-            DISTINCT JSONB_BUILD_OBJECT(
-              'skill', gn.name,
-              'level', lct.progression_state,
-              'score', lct.computed_score
-            )
-          ) FILTER (WHERE gn.node_type = 'SKILL' AND upper_inf(lct.valid_period)) AS top_skills
-        FROM core.learner_profiles lp
-        LEFT JOIN core.organisations o ON o.id = lp.current_school_id
-        LEFT JOIN evidence.artifacts a ON a.learner_id = lp.learner_id
-        LEFT JOIN intelligence.learner_capability_temporal lct
-          ON lct.learner_id = lp.learner_id AND upper_inf(lct.valid_period)
-        LEFT JOIN intelligence.graph_nodes gn ON gn.id = lct.node_id
-        WHERE lp.consent_status = 'VERIFIED_ACTIVE'
-          AND lp.allow_partner_talent_discovery = TRUE
-        GROUP BY lp.learner_id, lp.education_stage, o.name, lp.declared_interests
-        ORDER BY COUNT(DISTINCT a.id) DESC
-        LIMIT 25
+      sql<{ learner_count: string }>`
+        SELECT COUNT(*)::text AS learner_count
+        FROM core.learner_profiles
+        WHERE consent_status = 'VERIFIED_ACTIVE'
+          AND allow_partner_talent_discovery = TRUE
       `.execute(db),
       sql<{
         id: string;
@@ -1392,14 +1434,7 @@ export const institutionQueries = {
         learnerCount: Number(s.learner_count),
         averageScore: Number(s.avg_score),
       })),
-      optInTalentPool: talentPool.rows.map((t) => ({
-        learnerId: t.learner_id,
-        educationStage: t.education_stage,
-        schoolName: t.school_name,
-        declaredInterests: t.declared_interests ?? [],
-        verifiedArtifacts: Number(t.verified_artifacts),
-        topSkills: t.top_skills ?? [],
-      })),
+      optedInLearnerCount: Number(talentPoolCount.rows[0]?.learner_count ?? 0),
       organisations: orgs.rows.map((o) => ({
         id: o.id,
         name: o.name,

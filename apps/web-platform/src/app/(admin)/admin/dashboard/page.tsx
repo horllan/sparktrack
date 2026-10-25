@@ -105,9 +105,7 @@ export default function AdminDashboardPage() {
 
   const [enrolLearnerId, setEnrolLearnerId] = useState('');
   const [enrolCohortId, setEnrolCohortId] = useState('');
-  const [paymentProvider, setPaymentProvider] = useState<'FREE_PILOT' | 'SCHOLARSHIP' | 'PAYSTACK' | 'STRIPE'>(
-    'FREE_PILOT',
-  );
+  const [paymentProvider, setPaymentProvider] = useState<'PAYSTACK' | 'STRIPE'>('PAYSTACK');
 
   const [assignMentorId, setAssignMentorId] = useState('');
   const [assignCohortId, setAssignCohortId] = useState('');
@@ -172,7 +170,7 @@ export default function AdminDashboardPage() {
     setNotice('');
     try {
       const token = await getToken();
-      if (!token) throw new Error('Sign in with an Operations or School Admin account to update tickets.');
+      if (!token) throw new Error('Sign in with an Operations account to update tickets.');
       const res = await fetch(`${API_URL}/v1/support/tickets/${ticketId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -508,7 +506,7 @@ export default function AdminDashboardPage() {
                   <div>
                     <CardTitle className="text-base">Enrol Learner into Cohort</CardTitle>
                     <CardDescription>
-                      Activate Scholarship / Free Pilot seats or initiate Paystack/Stripe billing.
+                      Create a pending payment enrolment. Free-pilot and scholarship activation require an approved eligibility workflow.
                     </CardDescription>
                   </div>
                   <Button
@@ -537,8 +535,6 @@ export default function AdminDashboardPage() {
                   onChange={(e) => setPaymentProvider(e.target.value as typeof paymentProvider)}
                   className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 text-sm text-slate-900"
                 >
-                  <option value="FREE_PILOT">Free Pilot (Immediate Activation)</option>
-                  <option value="SCHOLARSHIP">Sponsored Scholarship (Immediate Activation)</option>
                   <option value="PAYSTACK">Paystack (Pending Webhook Confirmation)</option>
                   <option value="STRIPE">Stripe (Pending Webhook Confirmation)</option>
                 </select>
@@ -698,8 +694,7 @@ export default function AdminDashboardPage() {
             <CardContent className="space-y-4">
               {tickets.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-6 text-center text-sm text-slate-500">
-                  No open support or DPO tickets in the queue (sign in with your Operations / Admin account to view live
-                  staff tickets).
+                  No open support or DPO tickets in the queue (sign in with an Operations account to view staff tickets).
                 </div>
               ) : (
                 tickets.map((t) => (

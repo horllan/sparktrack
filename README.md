@@ -16,3 +16,13 @@ This repository contains the complete architectural blueprint, Antigravity agent
 ## Learner onboarding and guardian consent
 
 The student onboarding page requires an authenticated Supabase learner account. It creates the learner profile through the API and sends a 10-minute, single-use consent code to the guardian by Termii. The guardian opens the SMS link and records consent (or declines); learner evidence remains blocked until consent is verified. Apply database migrations with `pnpm db:migrate` before using this flow.
+
+## CI and deployment stages
+
+The GitHub Actions workflow validates dependency advisories, database migrations, linting, typechecking, builds, tests, and an API container build. It runs for pull requests and pushes to `main`, `master`, and `develop`. The container image is built for validation only; this repository does not currently deploy to a development, staging, or production environment.
+
+Keep development and staging isolated from production, including separate databases, credentials, cache/storage resources, and sandbox integrations. Use synthetic or anonymized learner data outside production. Do not promote a build until CI is green, environment-specific migration and smoke tests pass, and rollback/restore procedures have been exercised. Production deployment should require a separate human approval gate.
+
+The dependency audit currently reports critical and high-severity advisories. Treat this as a release blocker and resolve the affected dependencies before using this workflow as an approval for any deployment. Configure branch protection to require the `Lint, Typecheck & Test` and `Build API container (validation only)` checks.
+
+See the [security and deployment-readiness report](docs/SECURITY_AND_DEPLOYMENT_READINESS.md) for the repository findings, changes made, validation results, and follow-up steps.

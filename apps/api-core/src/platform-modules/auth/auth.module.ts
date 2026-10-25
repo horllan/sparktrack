@@ -21,13 +21,11 @@ const UpdateConsentPreferencesSchema = z.object({
   allowPartnerTalentDiscovery: z.boolean(),
 });
 
-const RegisterRoleSchema = z.object({
-  role: z.enum(['PARENT', 'SCHOOL_ADMIN', 'ORG_PARTNER', 'MENTOR']),
+export const RegisterRoleSchema = z.object({
+  role: z.literal('PARENT'),
   fullName: z.string().min(2).max(120),
   email: z.string().email().optional(),
   phoneNumber: z.string().min(7).max(24).optional(),
-  organisationName: z.string().min(2).max(160).optional(),
-  organisationType: z.enum(['SCHOOL', 'NGO', 'TRAINING_PROVIDER', 'EMPLOYER', 'GOVERNMENT']).optional(),
 });
 
 const RegisterChildSchema = z.object({
