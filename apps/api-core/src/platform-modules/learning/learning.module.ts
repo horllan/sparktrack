@@ -1,13 +1,12 @@
-import { createHmac, randomUUID } from 'node:crypto';
 import { Body, Controller, ForbiddenException, Get, Inject, Module, NotFoundException, Param, ParseUUIDPipe, Post } from '@nestjs/common';
-import type { ConfigService } from '@nestjs/config';
-import { ConfigService as NestConfigService } from '@nestjs/config';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { institutionQueries, learningQueries, ledgerQueries, telemetryQueries, type SparkTrackDatabase } from '@sparktrack/db';
 import type { Kysely } from 'kysely';
 import { z } from 'zod';
 import { CurrentUser, LearnerAccessService, Public, Roles, type AuthUser } from '../../common/auth/auth.guard';
+import { UpstashRedisService } from '../../common/cache/upstash-redis.service';
 import { KYSELY } from '../../common/database/database.module';
+import { CloudflareR2Service } from './cloudflare-r2.service';
 
 const CreateOrganisationSchema = z.object({
   name: z.string().min(2).max(160),
@@ -35,14 +34,20 @@ class LearningController {
   constructor(
     @Inject(KYSELY) private readonly db: Kysely<SparkTrackDatabase>,
     private readonly access: LearnerAccessService,
-    @Inject(NestConfigService) private readonly config: ConfigService,
+    private readonly r2: CloudflareR2Service,
+    private readonly cache: UpstashRedisService,
   ) {}
 
   @Public()
   @Get('skills')
-  @ApiOperation({ summary: 'List all skill nodes in the capability graph' })
-  skills() {
-    return learningQueries.skillCatalogue(this.db);
+  @ApiOperation({ summary: 'List all skill nodes in the capability graph (cached via Upstash Redis)' })
+  async skills() {
+    const cacheKey = 'sparktrack:catalogue:skills:v1';
+    const cached = await this.cache.getJson<Awaited<ReturnType<typeof learningQueries.skillCatalogue>>>(cacheKey);
+    if (cached) return cached;
+    const rows = await learningQueries.skillCatalogue(this.db);
+    await this.cache.setJson(cacheKey, rows, 300);
+    return rows;
   }
 
   @Public()
@@ -79,13 +84,17 @@ class LearningController {
 
   @Public()
   @Get('institutions/analytics')
-  @ApiOperation({ summary: 'Aggregate cohort capability progression and ledger audit status' })
+  @ApiOperation({ summary: 'Aggregate cohort capability progression and ledger audit status (cached via Upstash Redis)' })
   async institutionAnalytics() {
+    const cacheKey = 'sparktrack:institutions:analytics:v1';
+    const cached = await this.cache.getJson<Record<string, unknown>>(cacheKey);
+    if (cached) return cached;
+
     const [summary, chain] = await Promise.all([
       institutionQueries.analyticsSummary(this.db),
       ledgerQueries.verifyChain(this.db),
     ]);
-    return {
+    const payload = {
       ...summary,
       ledgerAudit: {
         totalEntries: chain.length,
@@ -93,6 +102,8 @@ class LearningController {
         latestLedgerSeq: chain.length > 0 ? chain[chain.length - 1]!.ledgerSeq : null,
       },
     };
+    await this.cache.setJson(cacheKey, payload, 30);
+    return payload;
   }
 
   @ApiBearerAuth()
@@ -131,28 +142,13 @@ class LearningController {
 
   @ApiBearerAuth()
   @Post('storage/presign')
-  @ApiOperation({ summary: 'Issue a Cloudflare R2 object key and signed upload ticket for evidence attachments' })
+  @ApiOperation({ summary: 'Issue a Cloudflare R2 S3-V4 presigned PUT/GET ticket for evidence attachments' })
   async presignUpload(@CurrentUser() user: AuthUser, @Body() body: unknown) {
     const parsed = PresignUploadSchema.parse(body);
     await this.access.assertCanAccess(user, parsed.learnerId);
-
-    const safeFile = parsed.fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const r2Key = `learners/${parsed.learnerId}/artifacts/${randomUUID()}-${safeFile}`;
-    const endpoint = this.config.get<string>('R2_PUBLIC_ENDPOINT') ?? 'https://r2.sparktrack.africa';
-    const expiresAt = new Date(Date.now() + 15 * 60_000).toISOString();
-    const signingSecret = this.config.get<string>('R2_SECRET_ACCESS_KEY') ?? 'dev-r2-signing-key';
-    const signature = createHmac('sha256', signingSecret)
-      .update(`${r2Key}:${parsed.contentType}:${expiresAt}`)
-      .digest('hex');
-
-    return {
-      r2Key,
-      uploadUrl: `${endpoint.replace(/\/$/, '')}/${r2Key}?expires=${encodeURIComponent(expiresAt)}&sig=${signature}`,
-      expiresAt,
-      contentType: parsed.contentType,
-    };
+    return this.r2.presignUpload(parsed);
   }
 }
 
-@Module({ controllers: [LearningController] })
+@Module({ controllers: [LearningController], providers: [CloudflareR2Service], exports: [CloudflareR2Service] })
 export class LearningModule {}

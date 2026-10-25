@@ -19,10 +19,28 @@ import { SupportModule } from './platform-modules/support/support.module';
 
 import { DatabaseModule } from './common/database/database.module';
 import { AuthCoreModule } from './common/auth/auth-core.module';
+import { UpstashCacheModule } from './common/cache/upstash-cache.module';
 import { ZodExceptionFilter } from './common/filters/zod-exception.filter';
 
+function resolveRedisUrl(): string {
+  if (process.env.REDIS_URL?.trim()) {
+    return process.env.REDIS_URL.trim();
+  }
+  const upstashRestUrl = process.env.UPSTASH_REDIS_REST_URL?.trim();
+  const upstashToken = process.env.UPSTASH_REDIS_REST_TOKEN?.trim();
+  if (upstashRestUrl && upstashToken && !upstashRestUrl.includes('your-instance')) {
+    try {
+      const host = new URL(upstashRestUrl).hostname;
+      return `rediss://default:${encodeURIComponent(upstashToken)}@${host}:6379`;
+    } catch {
+      // Fallback to local redis
+    }
+  }
+  return 'redis://localhost:6379';
+}
+
 function redisConnection() {
-  const url = new URL(process.env.REDIS_URL ?? 'redis://localhost:6379');
+  const url = new URL(resolveRedisUrl());
   return {
     host: url.hostname, port: Number(url.port || 6379), username: url.username || undefined,
     password: url.password ? decodeURIComponent(url.password) : undefined,
@@ -40,6 +58,7 @@ function redisConnection() {
     BullModule.forRoot({ connection: redisConnection() }),
     DatabaseModule,
     AuthCoreModule,
+    UpstashCacheModule,
     // Intelligence Core (headless IP) — must never import platform-modules
     EvidenceEngineModule, SkillEngineModule, CapabilityGraphModule, ProgressEngineModule,
     PathwayEngineModule, RecommendationEngineModule, PipelineModule,

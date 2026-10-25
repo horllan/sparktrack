@@ -3,6 +3,8 @@ import {
   Body,
   Controller,
   Get,
+  HttpException,
+  HttpStatus,
   Inject,
   Module,
   NotFoundException,
@@ -17,6 +19,7 @@ import { supportQueries, type SparkTrackDatabase } from '@sparktrack/db';
 import type { Kysely } from 'kysely';
 import { z } from 'zod';
 import { CurrentUser, Public, Roles, type AuthUser } from '../../common/auth/auth.guard';
+import { UpstashRedisService } from '../../common/cache/upstash-redis.service';
 import { KYSELY } from '../../common/database/database.module';
 
 const CreateTicketSchema = z.object({
@@ -194,7 +197,10 @@ function answerQuestion(rawMessage: string) {
 @ApiTags('support')
 @Controller('v1/support')
 class SupportController {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<SparkTrackDatabase>) {}
+  constructor(
+    @Inject(KYSELY) private readonly db: Kysely<SparkTrackDatabase>,
+    private readonly upstash: UpstashRedisService,
+  ) {}
 
   @Public()
   @Post('chat')
@@ -212,6 +218,14 @@ class SupportController {
   @ApiOperation({ summary: 'Submit a Contact Us, School Partnership, Scholarship, or DPO Privacy inquiry ticket' })
   async createTicket(@Body() body: unknown) {
     const parsed = CreateTicketSchema.parse(body);
+    const rateBucket = `sparktrack:ratelimit:tickets:${parsed.requesterEmail.trim().toLowerCase()}`;
+    const rate = await this.upstash.checkRateLimit(rateBucket, 10, 600);
+    if (!rate.allowed) {
+      throw new HttpException(
+        'Too many support requests submitted recently. Please wait 10 minutes before submitting another ticket.',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
     const ticketReference = `TKT-${new Date().getFullYear()}-${randomInt(10000, 99999)}`;
     return supportQueries.createTicket(this.db, {
       ticketReference,

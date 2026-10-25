@@ -11,6 +11,7 @@ import {
   Roles,
   type AuthUser,
 } from '../../common/auth/auth.guard';
+import { UpstashRedisService } from '../../common/cache/upstash-redis.service';
 import { KYSELY } from '../../common/database/database.module';
 import { AuthPlatformService } from './auth-platform.service';
 import { TermiiSmsService } from './termii-sms.service';
@@ -172,18 +173,25 @@ class AuthController {
 @ApiTags('health')
 @Controller('health')
 class HealthController {
-  constructor(@Inject(KYSELY) private readonly db: Kysely<SparkTrackDatabase>) {}
+  constructor(
+    @Inject(KYSELY) private readonly db: Kysely<SparkTrackDatabase>,
+    private readonly upstash: UpstashRedisService,
+  ) {}
 
   @Public()
   @Get()
-  @ApiOperation({ summary: 'Readiness & cryptographic ledger health check' })
+  @ApiOperation({ summary: 'Readiness, Upstash Redis & cryptographic ledger health check' })
   async ok() {
-    const chain = await ledgerQueries.verifyChain(this.db);
+    const [chain, redisPing] = await Promise.all([
+      ledgerQueries.verifyChain(this.db),
+      this.upstash.ping(),
+    ]);
     const ledgerIntegrityValid = chain.every((entry) => entry.isValid);
     if (!ledgerIntegrityValid) {
       throw new ServiceUnavailableException({
         status: 'degraded',
         database: 'connected',
+        redis: redisPing.status,
         ledgerBlocks: chain.length,
         ledgerIntegrityValid: false,
         timestamp: new Date().toISOString(),
@@ -192,6 +200,8 @@ class HealthController {
     return {
       status: 'ok',
       database: 'connected',
+      redis: redisPing.status,
+      redisLatencyMs: redisPing.latencyMs ?? null,
       ledgerBlocks: chain.length,
       ledgerIntegrityValid: true,
       timestamp: new Date().toISOString(),

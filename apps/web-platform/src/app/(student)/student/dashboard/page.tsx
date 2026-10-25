@@ -104,6 +104,7 @@ export default function StudentDashboardPage() {
   const [artifactType, setArtifactType] = useState<ArtifactType>('PROJECT_SUBMISSION');
   const [description, setDescription] = useState('');
   const [externalUrl, setExternalUrl] = useState('');
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
@@ -176,13 +177,51 @@ export default function StudentDashboardPage() {
     setError('');
     setNotice('');
     try {
+      const storageR2Keys: string[] = [];
+      if (attachmentFile) {
+        try {
+          const { data: sessionData } = await createClient().auth.getSession();
+          const token = sessionData.session?.access_token;
+          if (token) {
+            const presignRes = await fetch(`${API_URL}/v1/learning/storage/presign`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({
+                learnerId: userId,
+                fileName: attachmentFile.name,
+                contentType: attachmentFile.type || 'application/octet-stream',
+              }),
+            });
+            if (presignRes.ok) {
+              const ticket = (await presignRes.json()) as {
+                r2Key: string;
+                uploadUrl: string;
+              };
+              storageR2Keys.push(ticket.r2Key);
+              await fetch(ticket.uploadUrl, {
+                method: 'PUT',
+                headers: {
+                  'Content-Type': attachmentFile.type || 'application/octet-stream',
+                },
+                body: attachmentFile,
+              }).catch(() => null);
+            }
+          }
+        } catch {
+          // Offline or bucket CORS pending — continue with offline queue
+        }
+      }
+
       await syncEngine.queueArtifact({
         clientSyncId: crypto.randomUUID(),
         learnerId: userId,
         artifactType,
         title: title.trim(),
         ...(description.trim() ? { description: description.trim() } : {}),
-        storageR2Keys: [],
+        storageR2Keys,
         externalUrls: externalUrl.trim() ? [externalUrl.trim()] : [],
         payload: { schema_version: '1.0', skill_codes: selectedSkills },
         complexityWeight: 1.0,
@@ -192,6 +231,7 @@ export default function StudentDashboardPage() {
       setTitle('');
       setDescription('');
       setExternalUrl('');
+      setAttachmentFile(null);
       setSelectedSkills([]);
       await refreshDashboard();
 
@@ -469,6 +509,21 @@ export default function StudentDashboardPage() {
               <label className="block space-y-1.5 text-sm font-semibold text-slate-800">
                 Link to your work <span className="font-normal text-slate-500">(optional)</span>
                 <Input value={externalUrl} onChange={(e) => setExternalUrl(e.target.value)} type="url" placeholder="Paste a link to a project, design, or video" />
+              </label>
+
+              <label className="block space-y-1.5 text-sm font-semibold text-slate-800">
+                Upload project file to Cloudflare R2 <span className="font-normal text-slate-500">(optional — photo, PDF, or zip)</span>
+                <Input
+                  type="file"
+                  accept="image/*,.pdf,.zip,.mp4,.mp3"
+                  onChange={(e) => setAttachmentFile(e.target.files?.[0] ?? null)}
+                  className="py-2 text-xs"
+                />
+                {attachmentFile && (
+                  <span className="block text-xs font-normal text-spark-700">
+                    Selected for R2 upload: {attachmentFile.name} ({Math.round(attachmentFile.size / 1024)} KB)
+                  </span>
+                )}
               </label>
 
               <div>
