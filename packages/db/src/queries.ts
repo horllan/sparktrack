@@ -1489,3 +1489,218 @@ export const telemetryQueries = {
     };
   },
 };
+
+export const supportQueries = {
+  async createTicket(
+    db: Db,
+    p: {
+      ticketReference: string;
+      category:
+        | 'GENERAL_SUPPORT'
+        | 'PARENT_CONSENT_HELP'
+        | 'SCHOOL_PARTNERSHIP'
+        | 'SCHOLARSHIP_SPONSORSHIP'
+        | 'PRIVACY_DPO_REQUEST'
+        | 'TECHNICAL_ISSUE';
+      priority?: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT_COMPLIANCE';
+      requesterName: string;
+      requesterEmail: string;
+      requesterPhone?: string;
+      requesterRole?: string;
+      organisationName?: string;
+      countryCode?: string;
+      subject: string;
+      message: string;
+    },
+  ) {
+    const defaultPriority = p.category === 'PRIVACY_DPO_REQUEST' ? 'URGENT_COMPLIANCE' : (p.priority ?? 'NORMAL');
+    const r = await sql<{
+      id: string;
+      ticket_reference: string;
+      status: string;
+      priority: string;
+      created_at: Date;
+    }>`
+      INSERT INTO core.support_tickets (
+        ticket_reference,
+        category,
+        priority,
+        status,
+        requester_name,
+        requester_email,
+        requester_phone,
+        requester_role,
+        organisation_name,
+        country_code,
+        subject,
+        message
+      )
+      VALUES (
+        ${p.ticketReference},
+        ${p.category}::core.ticket_category,
+        ${defaultPriority}::core.ticket_priority,
+        'OPEN'::core.ticket_status,
+        ${p.requesterName.trim()},
+        ${p.requesterEmail.trim()},
+        ${p.requesterPhone?.trim() ?? null},
+        ${p.requesterRole ?? 'VISITOR'},
+        ${p.organisationName?.trim() ?? null},
+        ${p.countryCode ?? 'NG'},
+        ${p.subject.trim()},
+        ${p.message.trim()}
+      )
+      RETURNING id, ticket_reference, status::text, priority::text, created_at
+    `.execute(db);
+
+    const row = r.rows[0]!;
+    return {
+      ticketId: row.id,
+      ticketReference: row.ticket_reference,
+      status: row.status,
+      priority: row.priority,
+      createdAt: row.created_at.toISOString(),
+    };
+  },
+
+  async listTickets(db: Db, statusFilter?: string) {
+    const r = statusFilter
+      ? await sql<{
+          id: string;
+          ticket_reference: string;
+          category: string;
+          priority: string;
+          status: string;
+          requester_name: string;
+          requester_email: string;
+          requester_phone: string | null;
+          requester_role: string;
+          organisation_name: string | null;
+          country_code: string;
+          subject: string;
+          message: string;
+          staff_resolution_notes: string | null;
+          created_at: Date;
+          resolved_at: Date | null;
+        }>`
+          SELECT
+            id,
+            ticket_reference,
+            category::text,
+            priority::text,
+            status::text,
+            requester_name,
+            requester_email,
+            requester_phone,
+            requester_role,
+            organisation_name,
+            country_code,
+            subject,
+            message,
+            staff_resolution_notes,
+            created_at,
+            resolved_at
+          FROM core.support_tickets
+          WHERE status = ${statusFilter}::core.ticket_status
+          ORDER BY created_at DESC
+          LIMIT 100
+        `.execute(db)
+      : await sql<{
+          id: string;
+          ticket_reference: string;
+          category: string;
+          priority: string;
+          status: string;
+          requester_name: string;
+          requester_email: string;
+          requester_phone: string | null;
+          requester_role: string;
+          organisation_name: string | null;
+          country_code: string;
+          subject: string;
+          message: string;
+          staff_resolution_notes: string | null;
+          created_at: Date;
+          resolved_at: Date | null;
+        }>`
+          SELECT
+            id,
+            ticket_reference,
+            category::text,
+            priority::text,
+            status::text,
+            requester_name,
+            requester_email,
+            requester_phone,
+            requester_role,
+            organisation_name,
+            country_code,
+            subject,
+            message,
+            staff_resolution_notes,
+            created_at,
+            resolved_at
+          FROM core.support_tickets
+          ORDER BY created_at DESC
+          LIMIT 100
+        `.execute(db);
+
+    return r.rows.map((row) => ({
+      id: row.id,
+      ticketReference: row.ticket_reference,
+      category: row.category,
+      priority: row.priority,
+      status: row.status,
+      requesterName: row.requester_name,
+      requesterEmail: row.requester_email,
+      requesterPhone: row.requester_phone,
+      requesterRole: row.requester_role,
+      organisationName: row.organisation_name,
+      countryCode: row.country_code,
+      subject: row.subject,
+      message: row.message,
+      staffResolutionNotes: row.staff_resolution_notes,
+      createdAt: row.created_at.toISOString(),
+      resolvedAt: row.resolved_at ? row.resolved_at.toISOString() : null,
+    }));
+  },
+
+  async updateTicket(
+    db: Db,
+    p: {
+      ticketId: string;
+      status: 'OPEN' | 'IN_PROGRESS' | 'ESCALATED_DPO' | 'RESOLVED';
+      priority?: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT_COMPLIANCE';
+      staffResolutionNotes?: string;
+      assignedToUserId?: string;
+    },
+  ) {
+    const r = await sql<{
+      id: string;
+      ticket_reference: string;
+      status: string;
+      priority: string;
+      staff_resolution_notes: string | null;
+    }>`
+      UPDATE core.support_tickets
+      SET
+        status = ${p.status}::core.ticket_status,
+        priority = COALESCE(${p.priority ?? null}::core.ticket_priority, priority),
+        staff_resolution_notes = COALESCE(${p.staffResolutionNotes ?? null}, staff_resolution_notes),
+        assigned_to_user_id = COALESCE(${p.assignedToUserId ?? null}::uuid, assigned_to_user_id),
+        resolved_at = CASE WHEN ${p.status} = 'RESOLVED' THEN NOW() ELSE resolved_at END,
+        updated_at = NOW()
+      WHERE id = ${p.ticketId}::uuid
+      RETURNING id, ticket_reference, status::text, priority::text, staff_resolution_notes
+    `.execute(db);
+
+    const row = r.rows[0];
+    if (!row) return null;
+    return {
+      id: row.id,
+      ticketReference: row.ticket_reference,
+      status: row.status,
+      priority: row.priority,
+      staffResolutionNotes: row.staff_resolution_notes,
+    };
+  },
+};

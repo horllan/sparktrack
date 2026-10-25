@@ -3,6 +3,7 @@ import './globals.css';
 import { Providers } from './providers';
 import { Navbar } from '../components/navbar';
 import { Footer } from '../components/footer';
+import { SparkChatbot } from '../components/spark-chatbot';
 
 export const metadata: Metadata = {
   title: 'SparkTrack — Explore what you can do',
@@ -19,6 +20,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <Navbar />
           <div className="flex-1">{children}</div>
           <Footer />
+          <SparkChatbot />
         </Providers>
       </body>
     </html>

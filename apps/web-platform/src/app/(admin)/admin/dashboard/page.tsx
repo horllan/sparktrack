@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   Building2,
   CalendarRange,
+  MessageSquare,
   Network,
   Sparkles,
   UserPlus,
@@ -62,7 +63,25 @@ interface GraphTopology {
   }>;
 }
 
-type AdminTab = 'cohorts' | 'enrolment' | 'partners' | 'graph';
+interface SupportTicket {
+  id: string;
+  ticketReference: string;
+  category: string;
+  priority: string;
+  status: 'OPEN' | 'IN_PROGRESS' | 'ESCALATED_DPO' | 'RESOLVED';
+  requesterName: string;
+  requesterEmail: string;
+  requesterPhone: string | null;
+  requesterRole: string;
+  organisationName: string | null;
+  countryCode: string;
+  subject: string;
+  message: string;
+  staffResolutionNotes: string | null;
+  createdAt: string;
+}
+
+type AdminTab = 'cohorts' | 'enrolment' | 'partners' | 'graph' | 'tickets';
 
 export default function AdminDashboardPage() {
   const [activeTab, setActiveTab] = useState<AdminTab>('cohorts');
@@ -70,6 +89,8 @@ export default function AdminDashboardPage() {
 
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
   const [topology, setTopology] = useState<GraphTopology | null>(null);
+  const [tickets, setTickets] = useState<SupportTicket[]>([]);
+  const [resolutionDrafts, setResolutionDrafts] = useState<Record<string, string>>({});
   const [orgName, setOrgName] = useState('');
   const [orgType, setOrgType] = useState<'SCHOOL' | 'NGO' | 'TRAINING_PROVIDER' | 'EMPLOYER' | 'GOVERNMENT'>('SCHOOL');
 
@@ -116,15 +137,60 @@ export default function AdminDashboardPage() {
     }
   }, [enrolCohortId]);
 
+  const loadTickets = useCallback(async () => {
+    try {
+      const token = await getToken();
+      if (!token) return;
+      const res = await fetch(`${API_URL}/v1/support/tickets`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        setTickets((await res.json()) as SupportTicket[]);
+      }
+    } catch {
+      // Optional when browsing unauthenticated
+    }
+  }, []);
+
   useEffect(() => {
     void loadCohorts();
+    void loadTickets();
     fetch(`${API_URL}/v1/graph/topology`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data) setTopology(data as GraphTopology);
       })
       .catch(() => null);
-  }, [loadCohorts]);
+  }, [loadCohorts, loadTickets]);
+
+  async function updateTicketStatus(
+    ticketId: string,
+    status: 'OPEN' | 'IN_PROGRESS' | 'ESCALATED_DPO' | 'RESOLVED',
+  ) {
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      const token = await getToken();
+      if (!token) throw new Error('Sign in with an Operations or School Admin account to update tickets.');
+      const res = await fetch(`${API_URL}/v1/support/tickets/${ticketId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          status,
+          ...(resolutionDrafts[ticketId] ? { staffResolutionNotes: resolutionDrafts[ticketId] } : {}),
+        }),
+      });
+      const body = (await res.json()) as { ticketReference?: string; status?: string; message?: string };
+      if (!res.ok) throw new Error(body.message ?? 'Could not update ticket.');
+      setNotice(`Updated ticket ${body.ticketReference} to ${body.status}.`);
+      await loadTickets();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not update support ticket.');
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function createOrganisation() {
     setBusy(true);
@@ -313,6 +379,21 @@ export default function AdminDashboardPage() {
           >
             <Network className="h-4 w-4" />
             <span>4. Capability Graph ({topology?.nodes.length ?? 0})</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('tickets');
+              void loadTickets();
+            }}
+            className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
+              activeTab === 'tickets'
+                ? 'bg-spark-500 text-white shadow-sm'
+                : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+            }`}
+          >
+            <MessageSquare className="h-4 w-4" />
+            <span>5. Support &amp; DPO Desk ({tickets.length})</span>
           </button>
         </div>
 
@@ -592,6 +673,105 @@ export default function AdminDashboardPage() {
                   </div>
                 ))}
               </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* TAB 5: EMPLOYEE SUPPORT, PARTNERSHIPS & DPO COMPLIANCE DESK */}
+        {activeTab === 'tickets' && (
+          <Card>
+            <CardHeader>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <CardTitle className="text-base">
+                    Employee Support, School Partnerships &amp; DPO Triage Queue ({tickets.length})
+                  </CardTitle>
+                  <CardDescription>
+                    Inquiries submitted via /contact are routed here for SparkTrack staff and Data Protection Officers.
+                  </CardDescription>
+                </div>
+                <Button size="sm" variant="outline" disabled={busy} onClick={() => void loadTickets()}>
+                  Refresh Queue
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {tickets.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-6 text-center text-sm text-slate-500">
+                  No open support or DPO tickets in the queue (sign in with your Operations / Admin account to view live
+                  staff tickets).
+                </div>
+              ) : (
+                tickets.map((t) => (
+                  <div
+                    key={t.id}
+                    className="space-y-3 rounded-2xl border border-slate-200/90 bg-white p-4 text-sm shadow-2xs"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <code className="rounded bg-slate-100 px-2 py-0.5 font-mono text-xs font-bold text-slate-800">
+                          {t.ticketReference}
+                        </code>
+                        <span className="font-extrabold text-slate-900">{t.subject}</span>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <Badge variant="outline">{t.category.replace(/_/g, ' ')}</Badge>
+                        <Badge variant={t.priority === 'URGENT_COMPLIANCE' ? 'warning' : 'default'}>
+                          {t.priority}
+                        </Badge>
+                        <Badge variant={t.status === 'RESOLVED' ? 'success' : 'outline'}>{t.status}</Badge>
+                      </div>
+                    </div>
+
+                    <p className="text-xs text-slate-500">
+                      From: <strong>{t.requesterName}</strong> ({t.requesterRole} • {t.requesterEmail}
+                      {t.requesterPhone ? ` • ${t.requesterPhone}` : ''})
+                      {t.organisationName ? ` • Org: ${t.organisationName}` : ''} • Country: {t.countryCode}
+                    </p>
+
+                    <p className="rounded-xl bg-slate-50 p-3 text-xs leading-5 text-slate-700">{t.message}</p>
+
+                    <div className="flex flex-col gap-2.5 pt-1 sm:flex-row sm:items-center">
+                      <Input
+                        value={resolutionDrafts[t.id] ?? t.staffResolutionNotes ?? ''}
+                        onChange={(e) =>
+                          setResolutionDrafts((prev) => ({
+                            ...prev,
+                            [t.id]: e.target.value,
+                          }))
+                        }
+                        placeholder="Add staff resolution notes or DPO audit comment…"
+                        className="flex-1 text-xs"
+                      />
+                      <div className="flex flex-wrap gap-1.5">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={busy}
+                          onClick={() => void updateTicketStatus(t.id, 'IN_PROGRESS')}
+                        >
+                          In Progress
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={busy}
+                          onClick={() => void updateTicketStatus(t.id, 'ESCALATED_DPO')}
+                        >
+                          Escalate DPO
+                        </Button>
+                        <Button
+                          size="sm"
+                          disabled={busy}
+                          onClick={() => void updateTicketStatus(t.id, 'RESOLVED')}
+                        >
+                          Mark Resolved
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
             </CardContent>
           </Card>
         )}

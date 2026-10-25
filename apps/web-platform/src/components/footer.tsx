@@ -1,11 +1,11 @@
 import Link from 'next/link';
-import { Compass, HeartHandshake, ShieldCheck, Sparkles, UsersRound } from '@sparktrack/ui';
+import { Compass, HeartHandshake, Scale, ShieldCheck, Sparkles, UsersRound } from '@sparktrack/ui';
 
 export function Footer() {
   return (
     <footer className="border-t border-slate-200/80 bg-[#0d172f] text-slate-300">
       <div className="mx-auto max-w-[1440px] px-4 py-14 sm:px-6 lg:px-10">
-        <div className="grid gap-10 lg:grid-cols-[1.35fr_1fr_1fr_1fr_1fr]">
+        <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-[1.35fr_1fr_1fr_1fr_1.15fr]">
           {/* Brand & Mission */}
           <div className="space-y-4">
             <Link href="/" className="inline-flex items-center gap-2.5">
@@ -15,12 +15,12 @@ export function Footer() {
               <span className="text-lg font-extrabold tracking-tight text-white">sparktrack</span>
             </Link>
             <p className="max-w-sm text-sm leading-6 text-slate-400">
-              Longitudinal Youth Capability &amp; Future Pathways Intelligence. Helping Junior and Senior Secondary
-              learners turn curiosity and real projects into verified skills—guided by parents, mentors, and schools.
+              Longitudinal Youth Capability &amp; Future Pathways Intelligence. Built in Nigeria for Africa and the
+              world—helping Junior and Senior Secondary learners turn real projects into verified skills.
             </p>
             <div className="flex flex-wrap gap-2 pt-1 text-xs font-medium text-cyan-300">
               <span className="inline-flex items-center gap-1.5 rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1">
-                <ShieldCheck className="h-3.5 w-3.5" /> NDPA 2023 Child-Safe
+                <ShieldCheck className="h-3.5 w-3.5" /> NDPA 2023 • POPIA • GDPR
               </span>
               <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-400/20 bg-blue-400/10 px-3 py-1">
                 <Compass className="h-3.5 w-3.5" /> Evidence Over Labels
@@ -92,13 +92,28 @@ export function Footer() {
             </ul>
           </div>
 
-          {/* Platform & Tour */}
+          {/* Support & Partnerships */}
           <div>
-            <h3 className="text-xs font-bold uppercase tracking-[0.14em] text-white">How It Works</h3>
+            <h3 className="text-xs font-bold uppercase tracking-[0.14em] text-white">Support &amp; Contact</h3>
             <ul className="mt-4 space-y-2.5 text-sm">
               <li>
-                <Link href="/#explainer" className="transition hover:text-white">
-                  Watch Explainer Story
+                <Link href="/contact" className="transition hover:text-white">
+                  Contact Us &amp; Support Desk
+                </Link>
+              </li>
+              <li>
+                <Link href="/contact?category=SCHOOL_PARTNERSHIP" className="transition hover:text-white">
+                  School &amp; Ministry Partnerships
+                </Link>
+              </li>
+              <li>
+                <Link href="/contact?category=SCHOLARSHIP_SPONSORSHIP" className="transition hover:text-white">
+                  Sponsor Youth Scholarships
+                </Link>
+              </li>
+              <li>
+                <Link href="/contact?category=PRIVACY_DPO_REQUEST" className="transition hover:text-white">
+                  Data Protection Officer (DPO)
                 </Link>
               </li>
               <li>
@@ -106,46 +121,41 @@ export function Footer() {
                   Interactive Platform Tour
                 </Link>
               </li>
-              <li>
-                <Link href="/#how-it-works" className="transition hover:text-white">
-                  Parent &amp; School Onboarding Flow
-                </Link>
-              </li>
-              <li>
-                <Link href="/parent/dashboard" className="transition hover:text-white">
-                  13-Part Development Report
-                </Link>
-              </li>
-              <li>
-                <Link href="/student/dashboard" className="transition hover:text-white">
-                  Offline-First PWA Capture
-                </Link>
-              </li>
             </ul>
           </div>
 
-          {/* Trust, Safety & Compliance */}
+          {/* Legal, Privacy & Compliance */}
           <div>
-            <h3 className="text-xs font-bold uppercase tracking-[0.14em] text-white">Trust &amp; Privacy</h3>
+            <h3 className="text-xs font-bold uppercase tracking-[0.14em] text-white">Legal &amp; Compliance</h3>
             <ul className="mt-4 space-y-2.5 text-sm">
               <li>
-                <Link href="/parent/consent" className="transition hover:text-white">
-                  Guardian SMS OTP Verification
+                <Link href="/legal?doc=privacy" className="transition hover:text-white">
+                  Privacy Policy (NDPA / POPIA / GDPR)
                 </Link>
               </li>
               <li>
-                <Link href="/parent/dashboard" className="transition hover:text-white">
-                  NDPA 2023 Privacy Controls
+                <Link href="/legal?doc=terms" className="transition hover:text-white">
+                  Terms of Service &amp; Acceptable Use
                 </Link>
               </li>
               <li>
-                <Link href="/student/portfolio" className="transition hover:text-white">
-                  SHA-256 Cryptographic Ledger
+                <Link href="/legal?doc=child-safety" className="transition hover:text-white">
+                  Child Safety &amp; Consent Charter
                 </Link>
               </li>
               <li>
-                <Link href="/#trust" className="transition hover:text-white">
-                  Non-Deterministic AI Guardrails
+                <Link href="/legal?doc=ai-charter" className="transition hover:text-white">
+                  AI Ethics &amp; Non-Deterministic Policy
+                </Link>
+              </li>
+              <li>
+                <Link href="/legal?doc=dpa" className="transition hover:text-white">
+                  School Institutional DPA
+                </Link>
+              </li>
+              <li>
+                <Link href="/legal?doc=ledger-governance" className="transition hover:text-white">
+                  SHA-256 Ledger &amp; Right to Erasure
                 </Link>
               </li>
             </ul>
@@ -153,16 +163,19 @@ export function Footer() {
         </div>
 
         <div className="mt-12 flex flex-col items-start justify-between gap-4 border-t border-white/10 pt-8 text-xs text-slate-400 sm:flex-row sm:items-center">
-          <p>© {new Date().getFullYear()} SparkTrack Intelligence Platform. Built for youth capability exploration.</p>
-          <div className="flex flex-wrap items-center gap-5">
-            <span className="inline-flex items-center gap-1.5">
-              <HeartHandshake className="h-3.5 w-3.5 text-coral-500" /> Parent &amp; School First
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <UsersRound className="h-3.5 w-3.5 text-cyan-400" /> Mentor Verified Evidence
-            </span>
-            <Link href="/parent/consent" className="underline decoration-slate-600 underline-offset-4 hover:text-white">
-              Guardian Consent Portal
+          <p>
+            © {new Date().getFullYear()} SparkTrack Intelligence Platform. Compliant with Nigeria NDPA 2023, Child’s
+            Rights Act 2003, AU/POPIA, GDPR &amp; COPPA.
+          </p>
+          <div className="flex flex-wrap items-center gap-4">
+            <Link href="/legal" className="inline-flex items-center gap-1 hover:text-white">
+              <Scale className="h-3.5 w-3.5 text-cyan-400" /> Legal Center
+            </Link>
+            <Link href="/contact" className="inline-flex items-center gap-1 hover:text-white">
+              <HeartHandshake className="h-3.5 w-3.5 text-coral-500" /> Contact Support
+            </Link>
+            <Link href="/parent/consent" className="inline-flex items-center gap-1 hover:text-white">
+              <UsersRound className="h-3.5 w-3.5 text-emerald-400" /> SMS Consent Portal
             </Link>
           </div>
         </div>
@@ -170,4 +183,3 @@ export function Footer() {
     </footer>
   );
 }
-

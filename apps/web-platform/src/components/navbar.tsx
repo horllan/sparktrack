@@ -71,6 +71,8 @@ function getPageLabel(pathname: string): string {
   if (pathname.startsWith('/school')) return 'School & Partner Insights';
   if (pathname.startsWith('/admin')) return 'Operations Console';
   if (pathname.startsWith('/auth')) return 'Sign In & Registration';
+  if (pathname.startsWith('/legal')) return 'Legal, Privacy & Child-Safety Center';
+  if (pathname.startsWith('/contact')) return 'Contact Support & Partnerships Desk';
   if (pathname.startsWith('/internal')) return 'Operator Access';
   return 'Home';
 }
@@ -101,10 +103,11 @@ export function Navbar() {
     ? ROLE_LINKS[role]
     : [
         { href: '/#how-it-works', label: 'How It Works', icon: Compass },
-        { href: '/#tour', label: 'Interactive Tour', icon: PlayCircle },
-        { href: '/parent/dashboard', label: 'For Parents', icon: HeartHandshake },
-        { href: '/school/dashboard', label: 'For Schools', icon: UsersRound },
-        { href: '/student/portfolio', label: 'Verify Portfolio', icon: ShieldCheck },
+        { href: '/#tour', label: 'Tour', icon: PlayCircle },
+        { href: '/parent/dashboard', label: 'Parents', icon: HeartHandshake },
+        { href: '/school/dashboard', label: 'Schools', icon: UsersRound },
+        { href: '/legal', label: 'Legal & Privacy', icon: ShieldCheck },
+        { href: '/contact', label: 'Contact Us', icon: Activity },
       ];
 
   useEffect(() => {

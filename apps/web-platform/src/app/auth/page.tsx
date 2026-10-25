@@ -469,6 +469,24 @@ function AuthHubContent() {
                     />
                   </div>
 
+                  {mode === 'signup' && (
+                    <p className="rounded-xl border border-slate-200/80 bg-slate-50 p-3 text-[11px] leading-5 text-slate-600">
+                      By creating an account, you agree to SparkTrack’s{' '}
+                      <Link href="/legal?doc=terms" className="font-semibold text-spark-700 underline">
+                        Terms of Service
+                      </Link>
+                      ,{' '}
+                      <Link href="/legal?doc=privacy" className="font-semibold text-spark-700 underline">
+                        Privacy Policy (NDPA 2023 • POPIA • GDPR)
+                      </Link>
+                      , and{' '}
+                      <Link href="/legal?doc=child-safety" className="font-semibold text-spark-700 underline">
+                        Child Safeguarding Charter
+                      </Link>
+                      .
+                    </p>
+                  )}
+
                   <Button
                     className="w-full"
                     disabled={
