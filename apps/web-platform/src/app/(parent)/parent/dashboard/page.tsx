@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { UserPlus, UsersRound } from 'lucide-react';
 import {
   Badge,
   Button,
@@ -20,6 +21,30 @@ import { createClient } from '../../../../lib/supabase/client';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
 const DEMO_EXPLORER_ID = '11111111-1111-4111-8111-111111111113';
+
+const CHILD_INTERESTS = [
+  'Coding & Programming',
+  'Robotics',
+  'Graphic Design',
+  'AI & Data Science',
+  'Business & Entrepreneurship',
+  'Cybersecurity',
+  'Video Production',
+  'Web Development',
+];
+
+const EDUCATION_STAGES = ['Primary 5', 'Primary 6', 'JSS1', 'JSS2', 'JSS3', 'SS1', 'SS2', 'SS3'];
+
+interface ManagedChild {
+  learnerId: string;
+  fullName: string;
+  educationStage: string;
+  dateOfBirth: string;
+  consentStatus: string;
+  declaredInterests: string[];
+  schoolName: string | null;
+  accessCode: string;
+}
 
 interface ReportSection {
   key: string;
@@ -68,23 +93,44 @@ const SECTION_KEYS = [
 type ReportTab = 'all' | 'overview' | 'skills' | 'pathways' | 'next';
 
 const REPORT_TABS: Array<{ id: ReportTab; label: string; keys: ReadonlyArray<(typeof SECTION_KEYS)[number]> }> = [
-  { id: 'overview', label: 'Overview & Interests', keys: ['executiveSummary', 'participationHistory', 'declaredVsObserved'] },
+  {
+    id: 'overview',
+    label: 'Overview & Interests',
+    keys: ['executiveSummary', 'participationHistory', 'declaredVsObserved'],
+  },
   {
     id: 'skills',
     label: 'Skills & Signals',
     keys: ['technicalSkills', 'creativeSkills', 'businessSkills', 'behaviouralSignals', 'capabilityMaturity'],
   },
   { id: 'pathways', label: 'Pathways to Explore', keys: ['careerPathways', 'entrepreneurshipPathways'] },
-  { id: 'next', label: 'Progress & Next Steps', keys: ['longitudinalProgress', 'recommendedNextSteps', 'mentorInsights'] },
+  {
+    id: 'next',
+    label: 'Progress & Next Steps',
+    keys: ['longitudinalProgress', 'recommendedNextSteps', 'mentorInsights'],
+  },
   { id: 'all', label: 'All 13 Sections', keys: SECTION_KEYS },
 ];
 
 export default function ParentDashboardPage() {
   const [learnerId, setLearnerId] = useState(DEMO_EXPLORER_ID);
+  const [childrenList, setChildrenList] = useState<ManagedChild[]>([]);
+  const [showAddChild, setShowAddChild] = useState(false);
+
+  // Add Child Form State
+  const [childName, setChildName] = useState('');
+  const [childDob, setChildDob] = useState('2013-05-14');
+  const [childStage, setChildStage] = useState('JSS2');
+  const [childSchool, setChildSchool] = useState('');
+  const [childInterests, setChildInterests] = useState<string[]>(['Robotics', 'Coding & Programming']);
+  const [activateConsentNow, setActivateConsentNow] = useState(true);
+
   const [activeTab, setActiveTab] = useState<ReportTab>('overview');
   const [report, setReport] = useState<GeneratedReport | null>(null);
   const [asOfDate, setAsOfDate] = useState('');
-  const [snapshotSkills, setSnapshotSkills] = useState<Array<{ node_name: string; progression: string; score: number }>>([]);
+  const [snapshotSkills, setSnapshotSkills] = useState<
+    Array<{ node_name: string; progression: string; score: number }>
+  >([]);
   const [consentPrefs, setConsentPrefs] = useState<ConsentPreferences | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
@@ -93,9 +139,29 @@ export default function ParentDashboardPage() {
   async function authHeaders() {
     const { data } = await createClient().auth.getSession();
     const token = data.session?.access_token;
-    if (!token) throw new Error('Please sign in with a Guardian account to perform this action.');
+    if (!token) throw new Error('Please sign in with your Parent/Guardian account at /auth first.');
     return { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
   }
+
+  const loadManagedChildren = useCallback(async () => {
+    try {
+      const { data } = await createClient().auth.getSession();
+      const token = data.session?.access_token;
+      if (!token) return;
+      const res = await fetch(`${API_URL}/v1/auth/children`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const list = (await res.json()) as ManagedChild[];
+        setChildrenList(list);
+        if (list[0]) {
+          setLearnerId(list[0].learnerId);
+        }
+      }
+    } catch {
+      // Optional when browsing demo mode unauthenticated
+    }
+  }, []);
 
   const loadConsentPreferences = useCallback(async (id: string) => {
     if (!id.trim()) return;
@@ -113,8 +179,66 @@ export default function ParentDashboardPage() {
   }, []);
 
   useEffect(() => {
+    void loadManagedChildren();
+    if (typeof window !== 'undefined' && window.location.search.includes('welcome=add-child')) {
+      setShowAddChild(true);
+    }
+  }, [loadManagedChildren]);
+
+  useEffect(() => {
     void loadConsentPreferences(learnerId);
   }, [learnerId, loadConsentPreferences]);
+
+  const toggleChildInterest = (interest: string) => {
+    setChildInterests((prev) =>
+      prev.includes(interest) ? prev.filter((i) => i !== interest) : [...prev, interest],
+    );
+  };
+
+  async function handleRegisterChild() {
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(`${API_URL}/v1/auth/children`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          fullName: childName.trim(),
+          dateOfBirth: childDob,
+          educationStage: childStage,
+          ...(childSchool.trim() ? { schoolName: childSchool.trim() } : {}),
+          declaredInterests: childInterests,
+          activateConsentImmediately: activateConsentNow,
+          allowPublicPortfolio: false,
+          allowPartnerTalentDiscovery: false,
+        }),
+      });
+      const body = (await res.json()) as {
+        learnerId?: string;
+        fullName?: string;
+        accessCode?: string;
+        consentStatus?: string;
+        message?: string;
+      };
+      if (!res.ok) throw new Error(body.message ?? 'Could not register child profile.');
+
+      setNotice(
+        `Registered ${body.fullName}! Student Access Code: ${body.accessCode} (Profile ID: ${body.learnerId}).`,
+      );
+      setChildName('');
+      setShowAddChild(false);
+      if (body.learnerId) {
+        setLearnerId(body.learnerId);
+      }
+      await loadManagedChildren();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not register child.');
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function updatePrivacyPreferences(next: {
     consentStatus: 'VERIFIED_ACTIVE' | 'RESTRICTED_INTERNAL_ONLY' | 'REVOKED';
@@ -174,7 +298,9 @@ export default function ParentDashboardPage() {
       const query = asOfDate ? `?asOf=${encodeURIComponent(new Date(asOfDate).toISOString())}` : '';
       const res = await fetch(`${API_URL}/v1/progress/${learnerId.trim()}${query}`, { headers });
       if (!res.ok) throw new Error(`Snapshot query failed (${res.status})`);
-      const data = (await res.json()) as { skills: Array<{ node_name: string; progression: string; score: number }> };
+      const data = (await res.json()) as {
+        skills: Array<{ node_name: string; progression: string; score: number }>;
+      };
       setSnapshotSkills(data.skills ?? []);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to query bitemporal snapshot.');
@@ -188,27 +314,182 @@ export default function ParentDashboardPage() {
   return (
     <main className="min-h-screen px-4 py-8 sm:px-6 lg:px-10">
       <div className="mx-auto max-w-6xl space-y-8">
+        {/* Hero Header */}
         <div className="spark-enter flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-slate-200/80 bg-white p-6 shadow-sm sm:p-8">
           <div>
-            <p className="mb-2 text-xs font-bold uppercase tracking-[0.14em] text-spark-700">Family space</p>
+            <p className="mb-2 text-xs font-bold uppercase tracking-[0.14em] text-spark-700">
+              Parent &amp; Guardian Hub
+            </p>
             <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">
               Support their growth with confidence.
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-              Review evidence-backed progress, explore new strengths, and stay in complete control of privacy choices.
+              Register your Junior or Senior Secondary child (JSS1–SS3), control NDPA privacy choices, and explore their
+              evidence-backed 13-part development report.
             </p>
           </div>
-          <Link href="/parent/consent">
-            <Button variant="outline">
-              <ShieldCheck size={16} className="mr-2" aria-hidden="true" />
-              Verify SMS Consent Code
+          <div className="flex flex-wrap gap-2.5">
+            <Button onClick={() => setShowAddChild((v) => !v)}>
+              <UserPlus size={16} className="mr-2" aria-hidden="true" />
+              {showAddChild ? 'Close Child Form' : 'Add Child / Ward (JSS–SSS)'}
             </Button>
-          </Link>
+            <Link href="/parent/consent">
+              <Button variant="outline">
+                <ShieldCheck size={16} className="mr-2" aria-hidden="true" />
+                Verify SMS Consent Code
+              </Button>
+            </Link>
+          </div>
         </div>
 
-        {error && <p role="alert" className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-800">{error}</p>}
-        {notice && <p role="status" className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-medium text-emerald-900">{notice}</p>}
+        {error && (
+          <p role="alert" className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-800">
+            {error}
+          </p>
+        )}
+        {notice && (
+          <p
+            role="status"
+            className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-medium text-emerald-900"
+          >
+            {notice}
+          </p>
+        )}
 
+        {/* REGISTERED CHILDREN BAR */}
+        {childrenList.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2.5 rounded-2xl border border-slate-200/90 bg-white p-4 shadow-sm">
+            <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-500">
+              <UsersRound className="h-4 w-4 text-spark-600" /> My Children:
+            </span>
+            {childrenList.map((child) => {
+              const selected = learnerId === child.learnerId;
+              return (
+                <button
+                  key={child.learnerId}
+                  type="button"
+                  onClick={() => setLearnerId(child.learnerId)}
+                  className={`inline-flex items-center gap-2 rounded-xl border px-3.5 py-2 text-xs font-bold transition ${
+                    selected
+                      ? 'border-spark-500 bg-spark-50 text-spark-900 shadow-sm'
+                      : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-white'
+                  }`}
+                >
+                  <span>
+                    {child.fullName} ({child.educationStage})
+                  </span>
+                  <Badge variant={child.consentStatus === 'VERIFIED_ACTIVE' ? 'success' : 'warning'}>
+                    {child.accessCode}
+                  </Badge>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* ADD CHILD / WARD DRAWER CARD */}
+        {showAddChild && (
+          <Card className="border-spark-300 shadow-lg">
+            <div className="h-1.5 bg-gradient-to-r from-coral-500 via-spark-600 to-cyan-500" />
+            <CardHeader>
+              <CardTitle className="text-lg">Register a Child or Ward (Primary 5 – SS3)</CardTitle>
+              <CardDescription>
+                Create your child’s learner profile under your guardian account. You will receive their unique Learner
+                ID and Access Code immediately.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700">Child’s Full Name</label>
+                  <Input
+                    value={childName}
+                    onChange={(e) => setChildName(e.target.value)}
+                    placeholder="e.g. Tobi Adeyemi"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700">Date of Birth</label>
+                  <Input type="date" value={childDob} onChange={(e) => setChildDob(e.target.value)} />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700">Class / Education Stage</label>
+                  <select
+                    value={childStage}
+                    onChange={(e) => setChildStage(e.target.value)}
+                    className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3 text-sm text-slate-900"
+                  >
+                    {EDUCATION_STAGES.map((stage) => (
+                      <option key={stage} value={stage}>
+                        {stage}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700">School Name (optional)</label>
+                  <Input
+                    value={childSchool}
+                    onChange={(e) => setChildSchool(e.target.value)}
+                    placeholder="e.g. King's College Lagos"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-slate-700">
+                  Initial Curiosity Areas (select at least 1 — your child can explore more anytime):
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {CHILD_INTERESTS.map((interest) => {
+                    const active = childInterests.includes(interest);
+                    return (
+                      <button
+                        key={interest}
+                        type="button"
+                        onClick={() => toggleChildInterest(interest)}
+                        className={`rounded-xl border px-3 py-1.5 text-xs font-semibold transition ${
+                          active
+                            ? 'border-spark-500 bg-spark-50 text-spark-900'
+                            : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                        }`}
+                      >
+                        {interest}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <label className="flex items-center gap-2.5 rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 text-xs font-medium text-emerald-950">
+                <input
+                  type="checkbox"
+                  checked={activateConsentNow}
+                  onChange={(e) => setActivateConsentNow(e.target.checked)}
+                />
+                <span>
+                  As this child’s parent/legal guardian, I grant NDPA 2023 consent for SparkTrack to record learning
+                  projects and generate developmental reports (profile remains private by default).
+                </span>
+              </label>
+
+              <div className="flex justify-end gap-2.5">
+                <Button variant="outline" onClick={() => setShowAddChild(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  disabled={busy || childName.trim().length < 2 || childInterests.length === 0}
+                  onClick={() => void handleRegisterChild()}
+                >
+                  <UserPlus size={15} className="mr-1.5" />
+                  {busy ? 'Registering Child…' : 'Create Child Learner Profile'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* NDPA PRIVACY CONTROLS */}
         <Card>
           <CardHeader>
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -219,7 +500,8 @@ export default function ParentDashboardPage() {
                 <div>
                   <CardTitle className="text-base">Family Privacy &amp; NDPA 2023 Consent Controls</CardTitle>
                   <CardDescription>
-                    Initial consent activation requires the 6-digit SMS code on the Consent page. Once verified, you can adjust sharing or withdraw consent here at any time.
+                    Every minor profile defaults to private. Once consent is verified, you can adjust sharing or
+                    withdraw consent here at any time.
                   </CardDescription>
                 </div>
               </div>
@@ -288,12 +570,13 @@ export default function ParentDashboardPage() {
               </div>
             ) : (
               <p className="text-xs text-slate-500">
-                Sign in with your Guardian account to manage live sharing toggles or withdraw consent for this learner.
+                Sign in with your Parent/Guardian account at <Link href="/auth?mode=signin&role=PARENT" className="font-semibold text-spark-700 underline">/auth</Link> to manage live sharing toggles or register a child.
               </p>
             )}
           </CardContent>
         </Card>
 
+        {/* 13-PART REPORT GENERATOR & TIME TRAVEL */}
         <Card>
           <CardHeader>
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -319,13 +602,15 @@ export default function ParentDashboardPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex flex-wrap gap-3">
-              <label htmlFor="learner-id" className="sr-only">Learner profile ID</label>
+              <label htmlFor="learner-id" className="sr-only">
+                Learner profile ID
+              </label>
               <Input
                 id="learner-id"
                 value={learnerId}
                 onChange={(e) => setLearnerId(e.target.value)}
                 placeholder="Enter learner profile ID"
-                className="flex-1 min-w-[240px]"
+                className="min-w-[240px] flex-1"
               />
               <Button variant="outline" disabled={busy || !learnerId.trim()} onClick={() => void fetchReport(false)}>
                 View Latest Report
@@ -344,14 +629,21 @@ export default function ParentDashboardPage() {
                 onChange={(e) => setAsOfDate(e.target.value)}
                 className="w-auto"
               />
-              <Button size="sm" variant="outline" disabled={busy || !learnerId.trim()} onClick={() => void loadTimeTravelSnapshot()}>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busy || !learnerId.trim()}
+                onClick={() => void loadTimeTravelSnapshot()}
+              >
                 Compare snapshot
               </Button>
             </div>
 
             {snapshotSkills.length > 0 && (
-              <div className="rounded-2xl bg-slate-50 p-4 space-y-2">
-                <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Historical Capability Snapshot</p>
+              <div className="space-y-2 rounded-2xl bg-slate-50 p-4">
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                  Historical Capability Snapshot
+                </p>
                 <div className="flex flex-wrap gap-2">
                   {snapshotSkills.map((s) => (
                     <Badge key={s.node_name} variant="competent">
@@ -374,7 +666,8 @@ export default function ParentDashboardPage() {
                       SparkTrack Development Report (Edition v{report.version})
                     </CardTitle>
                     <CardDescription>
-                      Generated on {new Date(report.generatedAt).toLocaleString()} · Exploratory guidance only, never fixed labels
+                      Generated on {new Date(report.generatedAt).toLocaleString()} · Exploratory guidance only, never
+                      fixed labels
                     </CardDescription>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">

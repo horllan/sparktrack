@@ -333,6 +333,297 @@ export const onboardingQueries = {
       return { status: 'created' as const, guardianId };
     });
   },
+
+  async registerRole(
+    db: Db,
+    userId: string,
+    p: {
+      role: 'PARENT' | 'SCHOOL_ADMIN' | 'ORG_PARTNER' | 'MENTOR';
+      fullName: string;
+      email?: string;
+      phoneNumber?: string;
+      organisationName?: string;
+      organisationType?: 'SCHOOL' | 'NGO' | 'TRAINING_PROVIDER' | 'EMPLOYER' | 'GOVERNMENT';
+    },
+  ) {
+    return db.transaction().execute(async (trx) => {
+      const existing = await sql<{ id: string; role: string; organisation_id: string | null }>`
+        SELECT id, role::text, organisation_id FROM core.users WHERE id = ${userId}::uuid FOR UPDATE
+      `.execute(trx);
+
+      if (existing.rows[0] && existing.rows[0].role !== p.role) {
+        return { status: 'role_conflict' as const, existingRole: existing.rows[0].role };
+      }
+
+      let organisationId = existing.rows[0]?.organisation_id ?? null;
+      if ((p.role === 'SCHOOL_ADMIN' || p.role === 'ORG_PARTNER') && p.organisationName && !organisationId) {
+        const orgType = p.organisationType ?? (p.role === 'SCHOOL_ADMIN' ? 'SCHOOL' : 'NGO');
+        const org = await sql<{ id: string }>`
+          INSERT INTO core.organisations (name, org_type, country_code, subscription_tier)
+          VALUES (${p.organisationName.trim()}, ${orgType}, 'NG', 'FREE_PILOT')
+          RETURNING id
+        `.execute(trx);
+        organisationId = org.rows[0]!.id;
+      }
+
+      await sql`
+        INSERT INTO core.users (id, role, full_name, email, phone_number, organisation_id, is_active)
+        VALUES (
+          ${userId}::uuid,
+          ${p.role}::core.user_role,
+          ${p.fullName.trim()},
+          ${p.email ?? null},
+          ${p.phoneNumber ?? null},
+          ${organisationId}::uuid,
+          TRUE
+        )
+        ON CONFLICT (id) DO UPDATE SET
+          full_name = EXCLUDED.full_name,
+          email = COALESCE(EXCLUDED.email, core.users.email),
+          phone_number = COALESCE(EXCLUDED.phone_number, core.users.phone_number),
+          organisation_id = COALESCE(EXCLUDED.organisation_id, core.users.organisation_id)
+      `.execute(trx);
+
+      return {
+        status: 'registered' as const,
+        userId,
+        role: p.role,
+        organisationId,
+      };
+    });
+  },
+
+  async registerChild(
+    db: Db,
+    actor: { id: string; role: string; organisationId: string | null },
+    p: {
+      fullName: string;
+      dateOfBirth: string;
+      educationStage: string;
+      schoolName?: string;
+      declaredInterests: string[];
+      guardianName?: string;
+      guardianPhone?: string;
+      guardianEmail?: string;
+      activateConsentImmediately?: boolean;
+      allowPublicPortfolio?: boolean;
+      allowPartnerTalentDiscovery?: boolean;
+    },
+  ) {
+    return db.transaction().execute(async (trx) => {
+      let guardianId: string;
+      if (actor.role === 'PARENT') {
+        guardianId = actor.id;
+      } else {
+        if (!p.guardianName || !p.guardianPhone) {
+          return { status: 'missing_guardian_contact' as const };
+        }
+        if (p.guardianEmail) {
+          const g = await sql<{ id: string }>`
+            INSERT INTO core.users (role, full_name, email, phone_number)
+            VALUES ('PARENT'::core.user_role, ${p.guardianName.trim()}, ${p.guardianEmail.trim()}, ${p.guardianPhone.trim()})
+            ON CONFLICT (email) DO UPDATE
+              SET full_name = EXCLUDED.full_name, phone_number = EXCLUDED.phone_number
+              WHERE core.users.role = 'PARENT' AND core.users.is_active
+            RETURNING id
+          `.execute(trx);
+          if (!g.rows[0]) return { status: 'guardian_account_conflict' as const };
+          guardianId = g.rows[0].id;
+        } else {
+          const g = await sql<{ id: string }>`
+            INSERT INTO core.users (role, full_name, phone_number)
+            VALUES ('PARENT'::core.user_role, ${p.guardianName.trim()}, ${p.guardianPhone.trim()})
+            RETURNING id
+          `.execute(trx);
+          guardianId = g.rows[0]!.id;
+        }
+      }
+
+      let schoolId = actor.organisationId;
+      if (!schoolId && p.schoolName?.trim()) {
+        const org = await sql<{ id: string }>`
+          INSERT INTO core.organisations (name, org_type, country_code, subscription_tier)
+          VALUES (${p.schoolName.trim()}, 'SCHOOL', 'NG', 'FREE_PILOT')
+          RETURNING id
+        `.execute(trx);
+        schoolId = org.rows[0]!.id;
+      }
+
+      const learnerUser = await sql<{ id: string }>`
+        INSERT INTO core.users (role, full_name, organisation_id, is_active)
+        VALUES ('LEARNER'::core.user_role, ${p.fullName.trim()}, ${schoolId}::uuid, TRUE)
+        RETURNING id
+      `.execute(trx);
+      const learnerId = learnerUser.rows[0]!.id;
+
+      const parentDirectVerify = actor.role === 'PARENT' && p.activateConsentImmediately === true;
+      const consentStatus = parentDirectVerify ? 'VERIFIED_ACTIVE' : 'PENDING_PARENTAL_CONSENT';
+      const allowPublic = parentDirectVerify && Boolean(p.allowPublicPortfolio);
+      const allowPartner = parentDirectVerify && Boolean(p.allowPartnerTalentDiscovery);
+
+      await sql`
+        INSERT INTO core.learner_profiles (
+          learner_id,
+          date_of_birth,
+          education_stage,
+          current_school_id,
+          primary_guardian_id,
+          consent_status,
+          consent_verified_at,
+          consent_verification_method,
+          allow_public_portfolio,
+          allow_partner_talent_discovery,
+          declared_interests
+        )
+        VALUES (
+          ${learnerId}::uuid,
+          ${p.dateOfBirth}::date,
+          ${p.educationStage.trim()},
+          ${schoolId}::uuid,
+          ${guardianId}::uuid,
+          ${consentStatus}::core.consent_status,
+          ${parentDirectVerify ? sql`NOW()` : sql`NULL`},
+          ${parentDirectVerify ? 'PARENT_DIRECT_REGISTRATION' : null},
+          ${allowPublic},
+          ${allowPartner},
+          ${sql.val(p.declaredInterests)}::text[]
+        )
+      `.execute(trx);
+
+      if (parentDirectVerify) {
+        await sql`
+          INSERT INTO evidence.parental_consent_audit (
+            learner_id,
+            guardian_id,
+            consent_status,
+            consent_verification_method,
+            allow_public_portfolio,
+            allow_partner_talent_discovery
+          )
+          VALUES (
+            ${learnerId}::uuid,
+            ${guardianId}::uuid,
+            'VERIFIED_ACTIVE'::core.consent_status,
+            'PARENT_DIRECT_REGISTRATION',
+            ${allowPublic},
+            ${allowPartner}
+          )
+        `.execute(trx);
+      }
+
+      return {
+        status: 'created' as const,
+        learnerId,
+        fullName: p.fullName.trim(),
+        educationStage: p.educationStage.trim(),
+        consentStatus,
+        accessCode: `SPK-${learnerId.slice(0, 8).toUpperCase()}`,
+      };
+    });
+  },
+
+  async listManagedLearners(db: Db, actor: { id: string; role: string; organisationId: string | null }) {
+    const r =
+      actor.role === 'PARENT'
+        ? await sql<{
+            learner_id: string;
+            full_name: string;
+            education_stage: string;
+            date_of_birth: string;
+            consent_status: string;
+            declared_interests: string[];
+            school_name: string | null;
+          }>`
+            SELECT
+              lp.learner_id,
+              u.full_name,
+              lp.education_stage,
+              lp.date_of_birth::text,
+              lp.consent_status::text,
+              lp.declared_interests,
+              o.name AS school_name
+            FROM core.learner_profiles lp
+            JOIN core.users u ON u.id = lp.learner_id
+            LEFT JOIN core.organisations o ON o.id = lp.current_school_id
+            WHERE lp.primary_guardian_id = ${actor.id}::uuid
+            ORDER BY lp.created_at DESC
+          `.execute(db)
+        : actor.organisationId
+          ? await sql<{
+              learner_id: string;
+              full_name: string;
+              education_stage: string;
+              date_of_birth: string;
+              consent_status: string;
+              declared_interests: string[];
+              school_name: string | null;
+            }>`
+              SELECT
+                lp.learner_id,
+                u.full_name,
+                lp.education_stage,
+                lp.date_of_birth::text,
+                lp.consent_status::text,
+                lp.declared_interests,
+                o.name AS school_name
+              FROM core.learner_profiles lp
+              JOIN core.users u ON u.id = lp.learner_id
+              LEFT JOIN core.organisations o ON o.id = lp.current_school_id
+              WHERE lp.current_school_id = ${actor.organisationId}::uuid
+              ORDER BY lp.created_at DESC
+            `.execute(db)
+          : await sql<{
+              learner_id: string;
+              full_name: string;
+              education_stage: string;
+              date_of_birth: string;
+              consent_status: string;
+              declared_interests: string[];
+              school_name: string | null;
+            }>`
+              SELECT
+                lp.learner_id,
+                u.full_name,
+                lp.education_stage,
+                lp.date_of_birth::text,
+                lp.consent_status::text,
+                lp.declared_interests,
+                o.name AS school_name
+              FROM core.learner_profiles lp
+              JOIN core.users u ON u.id = lp.learner_id
+              LEFT JOIN core.organisations o ON o.id = lp.current_school_id
+              ORDER BY lp.created_at DESC
+              LIMIT 25
+            `.execute(db);
+
+    return r.rows.map((row) => ({
+      learnerId: row.learner_id,
+      fullName: row.full_name,
+      educationStage: row.education_stage,
+      dateOfBirth: row.date_of_birth,
+      consentStatus: row.consent_status,
+      declaredInterests: row.declared_interests ?? [],
+      schoolName: row.school_name,
+      accessCode: `SPK-${row.learner_id.slice(0, 8).toUpperCase()}`,
+    }));
+  },
+
+  async bootstrapSuperAdmin(
+    db: Db,
+    userId: string,
+    p: { fullName: string; email?: string },
+  ) {
+    await sql`
+      INSERT INTO core.users (id, role, full_name, email, is_active)
+      VALUES (${userId}::uuid, 'SUPER_ADMIN'::core.user_role, ${p.fullName.trim()}, ${p.email ?? null}, TRUE)
+      ON CONFLICT (id) DO UPDATE SET
+        role = 'SUPER_ADMIN'::core.user_role,
+        full_name = EXCLUDED.full_name,
+        email = COALESCE(EXCLUDED.email, core.users.email),
+        is_active = TRUE
+    `.execute(db);
+    return { userId, role: 'SUPER_ADMIN' as const };
+  },
 };
 
 export const consentQueries = {

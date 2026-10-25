@@ -55,7 +55,7 @@ export class AuthGuard implements CanActivate {
       } else {
         if (!row.is_active) throw new UnauthorizedException();
         user = { id: row.id, role: row.role as Role, organisationId: row.organisation_id };
-        this.cache.set(sub, { user, exp: Date.now() + 30_000 });
+        this.cache.set(sub, { user, exp: Date.now() + 2_000 });
       }
     }
     req.user = user;

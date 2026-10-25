@@ -1,5 +1,6 @@
-import { createHmac, randomInt, randomUUID } from 'node:crypto';
+import { createHmac, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   HttpException,
@@ -11,7 +12,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { consentQueries, onboardingQueries } from '@sparktrack/db';
+import { accessQueries, consentQueries, onboardingQueries } from '@sparktrack/db';
 import type { Kysely } from 'kysely';
 import type { ConsentVerification, LearnerOnboarding } from '@sparktrack/contracts';
 import type { SparkTrackDatabase } from '@sparktrack/db';
@@ -134,6 +135,109 @@ export class AuthPlatformService {
       allowPublicPortfolio: updated.allowPublicPortfolio,
       allowPartnerTalentDiscovery: updated.allowPartnerTalentDiscovery,
     };
+  }
+
+  async currentProfile(user: AuthUser) {
+    const row = await accessQueries.userById(this.db, user.id);
+    if (!row) return user;
+    return {
+      id: row.id,
+      role: row.role,
+      organisationId: row.organisation_id,
+    };
+  }
+
+  async registerRole(
+    user: AuthUser,
+    payload: {
+      role: 'PARENT' | 'SCHOOL_ADMIN' | 'ORG_PARTNER' | 'MENTOR';
+      fullName: string;
+      email?: string;
+      phoneNumber?: string;
+      organisationName?: string;
+      organisationType?: 'SCHOOL' | 'NGO' | 'TRAINING_PROVIDER' | 'EMPLOYER' | 'GOVERNMENT';
+    },
+  ) {
+    const result = await onboardingQueries.registerRole(this.db, user.id, payload);
+    if (result.status === 'role_conflict') {
+      throw new ConflictException(
+        `This account is already registered with role ${result.existingRole}. Sign in with that workspace instead.`,
+      );
+    }
+    return result;
+  }
+
+  async registerChild(
+    user: AuthUser,
+    payload: {
+      fullName: string;
+      dateOfBirth: string;
+      educationStage: string;
+      schoolName?: string;
+      declaredInterests: string[];
+      guardianName?: string;
+      guardianPhone?: string;
+      guardianEmail?: string;
+      activateConsentImmediately?: boolean;
+      allowPublicPortfolio?: boolean;
+      allowPartnerTalentDiscovery?: boolean;
+    },
+  ) {
+    if (
+      user.role !== 'PARENT' &&
+      user.role !== 'SCHOOL_ADMIN' &&
+      user.role !== 'ORG_PARTNER' &&
+      user.role !== 'SUPER_ADMIN'
+    ) {
+      throw new ForbiddenException('Only parents, school administrators, or partner organisations can register a child.');
+    }
+    const result = await onboardingQueries.registerChild(this.db, user, payload);
+    if (result.status === 'missing_guardian_contact') {
+      throw new BadRequestException(
+        'When a school or organisation registers a learner, the parent/guardian full name and phone number are required for NDPA consent.',
+      );
+    }
+    if (result.status === 'guardian_account_conflict') {
+      throw new ConflictException('The guardian email is already associated with a non-parent account.');
+    }
+    return result;
+  }
+
+  async listManagedLearners(user: AuthUser) {
+    if (
+      user.role !== 'PARENT' &&
+      user.role !== 'SCHOOL_ADMIN' &&
+      user.role !== 'ORG_PARTNER' &&
+      user.role !== 'SUPER_ADMIN'
+    ) {
+      throw new ForbiddenException('Unauthorized to list managed learners.');
+    }
+    return onboardingQueries.listManagedLearners(this.db, user);
+  }
+
+  async bootstrapSuperAdmin(
+    user: AuthUser,
+    payload: { fullName: string; email?: string; adminSecret: string },
+  ) {
+    const configuredSecret =
+      this.config.get<string>('ADMIN_REGISTRATION_SECRET') ??
+      this.config.getOrThrow<string>('CONSENT_OTP_SECRET');
+
+    const expectedBuf = Buffer.from(configuredSecret, 'utf8');
+    const suppliedBuf = Buffer.from(payload.adminSecret, 'utf8');
+    const isValid =
+      expectedBuf.length >= 16 &&
+      expectedBuf.length === suppliedBuf.length &&
+      timingSafeEqual(expectedBuf, suppliedBuf);
+
+    if (!isValid) {
+      throw new ForbiddenException('Invalid operator security key. Super Admin provisioning denied.');
+    }
+
+    return onboardingQueries.bootstrapSuperAdmin(this.db, user.id, {
+      fullName: payload.fullName,
+      email: payload.email,
+    });
   }
 
   private hashCode(challengeId: string, code: string): string {

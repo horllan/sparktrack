@@ -9,11 +9,35 @@ import {
   RefreshCw,
   ShieldCheck,
   Sparkles,
+  UserPlus,
   UsersRound,
 } from 'lucide-react';
-import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@sparktrack/ui';
+import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input } from '@sparktrack/ui';
+import { createClient } from '../../../../lib/supabase/client';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
+const EDUCATION_STAGES = ['Primary 5', 'Primary 6', 'JSS1', 'JSS2', 'JSS3', 'SS1', 'SS2', 'SS3'];
+const STUDENT_INTERESTS = [
+  'Coding & Programming',
+  'Robotics',
+  'Graphic Design',
+  'AI & Data Science',
+  'Business & Entrepreneurship',
+  'Cybersecurity',
+  'Video Production',
+  'Web Development',
+];
+
+interface ManagedStudent {
+  learnerId: string;
+  fullName: string;
+  educationStage: string;
+  dateOfBirth: string;
+  consentStatus: string;
+  declaredInterests: string[];
+  schoolName: string | null;
+  accessCode: string;
+}
 
 interface InstitutionAnalytics {
   totals: {
@@ -53,7 +77,21 @@ interface InstitutionAnalytics {
 
 export default function SchoolDashboardPage() {
   const [data, setData] = useState<InstitutionAnalytics | null>(null);
+  const [students, setStudents] = useState<ManagedStudent[]>([]);
+  const [showAddStudent, setShowAddStudent] = useState(false);
+
+  // Add Student Form State (for School Admin / Organisation)
+  const [studentName, setStudentName] = useState('');
+  const [studentDob, setStudentDob] = useState('2012-09-10');
+  const [studentStage, setStudentStage] = useState('JSS3');
+  const [studentSchoolName, setStudentSchoolName] = useState('');
+  const [guardianName, setGuardianName] = useState('');
+  const [guardianPhone, setGuardianPhone] = useState('');
+  const [guardianEmail, setGuardianEmail] = useState('');
+  const [studentInterests, setStudentInterests] = useState<string[]>(['Robotics', 'Coding & Programming']);
+
   const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
 
   const loadAnalytics = useCallback(async () => {
@@ -71,9 +109,85 @@ export default function SchoolDashboardPage() {
     }
   }, []);
 
+  const loadManagedStudents = useCallback(async () => {
+    try {
+      const { data: sessionData } = await createClient().auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) return;
+      const res = await fetch(`${API_URL}/v1/auth/children`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        setStudents((await res.json()) as ManagedStudent[]);
+      }
+    } catch {
+      // Optional when browsing unauthenticated
+    }
+  }, []);
+
   useEffect(() => {
     void loadAnalytics();
-  }, [loadAnalytics]);
+    void loadManagedStudents();
+    if (typeof window !== 'undefined' && window.location.search.includes('welcome=add-student')) {
+      setShowAddStudent(true);
+    }
+  }, [loadAnalytics, loadManagedStudents]);
+
+  const toggleStudentInterest = (interest: string) => {
+    setStudentInterests((prev) =>
+      prev.includes(interest) ? prev.filter((i) => i !== interest) : [...prev, interest],
+    );
+  };
+
+  async function handleRegisterStudent() {
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      const { data: sessionData } = await createClient().auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) throw new Error('Please sign in with your School or Organisation account at /auth first.');
+
+      const res = await fetch(`${API_URL}/v1/auth/children`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          fullName: studentName.trim(),
+          dateOfBirth: studentDob,
+          educationStage: studentStage,
+          ...(studentSchoolName.trim() ? { schoolName: studentSchoolName.trim() } : {}),
+          declaredInterests: studentInterests,
+          guardianName: guardianName.trim(),
+          guardianPhone: guardianPhone.trim(),
+          ...(guardianEmail.trim() ? { guardianEmail: guardianEmail.trim() } : {}),
+        }),
+      });
+      const body = (await res.json()) as {
+        learnerId?: string;
+        fullName?: string;
+        accessCode?: string;
+        message?: string;
+      };
+      if (!res.ok) throw new Error(body.message ?? 'Could not register student.');
+
+      setNotice(
+        `Registered student ${body.fullName}! Student Access Code: ${body.accessCode} (Pending Guardian NDPA Consent).`,
+      );
+      setStudentName('');
+      setGuardianName('');
+      setGuardianPhone('');
+      setGuardianEmail('');
+      setShowAddStudent(false);
+      await Promise.all([loadAnalytics(), loadManagedStudents()]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not register student.');
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <main className="min-h-screen px-4 py-8 sm:px-6 lg:px-10">
@@ -89,20 +203,191 @@ export default function SchoolDashboardPage() {
               See how your learners are growing.
             </h1>
             <p className="max-w-2xl text-sm leading-6 text-slate-600">
-              Understand cohort progress, emerging capability distribution, and the verified experiences helping
-              learners build confidence across your institution.
+              Register Junior and Senior Secondary students (JSS1–SS3), link guardian contacts for NDPA compliance, and
+              track cohort capability progression across your institution.
             </p>
           </div>
-          <Button variant="outline" disabled={busy} onClick={() => void loadAnalytics()}>
-            <RefreshCw className={`mr-1.5 h-4 w-4 ${busy ? 'animate-spin' : ''}`} />
-            {busy ? 'Refreshing…' : 'Refresh Live Telemetry'}
-          </Button>
+          <div className="flex flex-wrap gap-2.5">
+            <Button onClick={() => setShowAddStudent((v) => !v)}>
+              <UserPlus className="mr-1.5 h-4 w-4" />
+              {showAddStudent ? 'Close Student Form' : 'Register Student (JSS–SSS)'}
+            </Button>
+            <Button variant="outline" disabled={busy} onClick={() => void loadAnalytics()}>
+              <RefreshCw className={`mr-1.5 h-4 w-4 ${busy ? 'animate-spin' : ''}`} />
+              {busy ? 'Refreshing…' : 'Refresh Live Telemetry'}
+            </Button>
+          </div>
         </div>
 
         {error && (
           <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3.5 text-sm font-medium text-red-700">
             {error}
           </p>
+        )}
+        {notice && (
+          <p
+            role="status"
+            className="rounded-xl border border-emerald-200 bg-emerald-50 p-3.5 text-sm font-medium text-emerald-900"
+          >
+            {notice}
+          </p>
+        )}
+
+        {/* SCHOOL STUDENT REGISTRATION DRAWER */}
+        {showAddStudent && (
+          <Card className="border-spark-300 shadow-lg">
+            <div className="h-1.5 bg-gradient-to-r from-violet-600 via-spark-600 to-cyan-500" />
+            <CardHeader>
+              <CardTitle className="text-lg">Register a Student &amp; Link Parent/Guardian (JSS1–SS3)</CardTitle>
+              <CardDescription>
+                Schools and partner organisations can onboard students directly. Guardian contact details are required
+                so the parent retains NDPA 2023 consent control.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700">Student Full Name</label>
+                  <Input
+                    value={studentName}
+                    onChange={(e) => setStudentName(e.target.value)}
+                    placeholder="e.g. Chidinma Okafor"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700">Date of Birth</label>
+                  <Input type="date" value={studentDob} onChange={(e) => setStudentDob(e.target.value)} />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700">Class / Education Stage</label>
+                  <select
+                    value={studentStage}
+                    onChange={(e) => setStudentStage(e.target.value)}
+                    className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3 text-sm text-slate-900"
+                  >
+                    {EDUCATION_STAGES.map((stage) => (
+                      <option key={stage} value={stage}>
+                        {stage}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700">School / Campus Name</label>
+                  <Input
+                    value={studentSchoolName}
+                    onChange={(e) => setStudentSchoolName(e.target.value)}
+                    placeholder="e.g. Queen's College Lagos"
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-3.5 sm:grid-cols-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700">Parent / Guardian Full Name</label>
+                  <Input
+                    value={guardianName}
+                    onChange={(e) => setGuardianName(e.target.value)}
+                    placeholder="e.g. Mr. Emeka Okafor"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700">Guardian Phone (+234…)</label>
+                  <Input
+                    type="tel"
+                    value={guardianPhone}
+                    onChange={(e) => setGuardianPhone(e.target.value)}
+                    placeholder="+2348012345678"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700">Guardian Email (optional)</label>
+                  <Input
+                    type="email"
+                    value={guardianEmail}
+                    onChange={(e) => setGuardianEmail(e.target.value)}
+                    placeholder="parent@example.com"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-slate-700">Initial Curiosity &amp; Co-Curricular Areas:</p>
+                <div className="flex flex-wrap gap-2">
+                  {STUDENT_INTERESTS.map((interest) => {
+                    const active = studentInterests.includes(interest);
+                    return (
+                      <button
+                        key={interest}
+                        type="button"
+                        onClick={() => toggleStudentInterest(interest)}
+                        className={`rounded-xl border px-3 py-1.5 text-xs font-semibold transition ${
+                          active
+                            ? 'border-spark-500 bg-spark-50 text-spark-900'
+                            : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                        }`}
+                      >
+                        {interest}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2.5">
+                <Button variant="outline" onClick={() => setShowAddStudent(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  disabled={
+                    busy ||
+                    studentName.trim().length < 2 ||
+                    guardianName.trim().length < 2 ||
+                    guardianPhone.trim().length < 7 ||
+                    studentInterests.length === 0
+                  }
+                  onClick={() => void handleRegisterStudent()}
+                >
+                  <UserPlus className="mr-1.5 h-4 w-4" />
+                  {busy ? 'Registering Student…' : 'Register Student & Generate Access ID'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* REGISTERED SCHOOL STUDENTS ROSTER */}
+        {students.length > 0 && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Institution Student Roster ({students.length})</CardTitle>
+              <CardDescription>
+                Students registered under your school or organisation along with their unique Learner Access Code.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {students.map((st) => (
+                  <div
+                    key={st.learnerId}
+                    className="flex items-center justify-between rounded-xl border border-slate-200/80 bg-slate-50/70 p-3.5 text-sm"
+                  >
+                    <div>
+                      <p className="font-bold text-slate-900">
+                        {st.fullName} <span className="text-xs font-medium text-slate-500">({st.educationStage})</span>
+                      </p>
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        ID: <code className="font-mono">{st.accessCode}</code>
+                      </p>
+                    </div>
+                    <Badge variant={st.consentStatus === 'VERIFIED_ACTIVE' ? 'success' : 'warning'}>
+                      {st.consentStatus === 'VERIFIED_ACTIVE' ? 'Consent Active' : 'Pending Parent'}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
         )}
 
         {data && (

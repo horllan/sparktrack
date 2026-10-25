@@ -21,6 +21,35 @@ const UpdateConsentPreferencesSchema = z.object({
   allowPartnerTalentDiscovery: z.boolean(),
 });
 
+const RegisterRoleSchema = z.object({
+  role: z.enum(['PARENT', 'SCHOOL_ADMIN', 'ORG_PARTNER', 'MENTOR']),
+  fullName: z.string().min(2).max(120),
+  email: z.string().email().optional(),
+  phoneNumber: z.string().min(7).max(24).optional(),
+  organisationName: z.string().min(2).max(160).optional(),
+  organisationType: z.enum(['SCHOOL', 'NGO', 'TRAINING_PROVIDER', 'EMPLOYER', 'GOVERNMENT']).optional(),
+});
+
+const RegisterChildSchema = z.object({
+  fullName: z.string().min(2).max(120),
+  dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  educationStage: z.string().min(2).max(40),
+  schoolName: z.string().max(160).optional(),
+  declaredInterests: z.array(z.string().min(2).max(80)).min(1).max(8),
+  guardianName: z.string().min(2).max(120).optional(),
+  guardianPhone: z.string().min(7).max(24).optional(),
+  guardianEmail: z.string().email().optional(),
+  activateConsentImmediately: z.boolean().optional(),
+  allowPublicPortfolio: z.boolean().optional(),
+  allowPartnerTalentDiscovery: z.boolean().optional(),
+});
+
+const BootstrapAdminSchema = z.object({
+  fullName: z.string().min(2).max(120),
+  email: z.string().email().optional(),
+  adminSecret: z.string().min(16).max(256),
+});
+
 @ApiTags('auth')
 @ApiBearerAuth()
 @Controller('v1/auth')
@@ -28,9 +57,38 @@ class AuthController {
   constructor(private readonly auth: AuthPlatformService) {}
 
   @Get('me')
+  @AllowUnprovisionedLearner()
   @ApiOperation({ summary: 'Return the authenticated user identity and role' })
   me(@CurrentUser() user: AuthUser) {
-    return user;
+    return this.auth.currentProfile(user);
+  }
+
+  @Post('register-role')
+  @AllowUnprovisionedLearner()
+  @ApiOperation({ summary: 'Provision a Parent/Guardian, School Admin, Partner Organisation, or Mentor account' })
+  registerRole(@CurrentUser() user: AuthUser, @Body() body: unknown) {
+    return this.auth.registerRole(user, RegisterRoleSchema.parse(body));
+  }
+
+  @Get('children')
+  @Roles('PARENT', 'SCHOOL_ADMIN', 'ORG_PARTNER', 'SUPER_ADMIN')
+  @ApiOperation({ summary: 'List children or students managed by the authenticated Parent or School/Organisation' })
+  listChildren(@CurrentUser() user: AuthUser) {
+    return this.auth.listManagedLearners(user);
+  }
+
+  @Post('children')
+  @Roles('PARENT', 'SCHOOL_ADMIN', 'ORG_PARTNER', 'SUPER_ADMIN')
+  @ApiOperation({ summary: 'Register a Junior/Senior Secondary learner under a Parent or School/Organisation' })
+  registerChild(@CurrentUser() user: AuthUser, @Body() body: unknown) {
+    return this.auth.registerChild(user, RegisterChildSchema.parse(body));
+  }
+
+  @Post('admin/bootstrap')
+  @AllowUnprovisionedLearner()
+  @ApiOperation({ summary: 'Internal operator endpoint: provision a SUPER_ADMIN account using ADMIN_REGISTRATION_SECRET' })
+  bootstrapAdmin(@CurrentUser() user: AuthUser, @Body() body: unknown) {
+    return this.auth.bootstrapSuperAdmin(user, BootstrapAdminSchema.parse(body));
   }
 
   @Post('onboarding')
