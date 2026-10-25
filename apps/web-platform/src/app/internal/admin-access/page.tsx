@@ -2,8 +2,20 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { KeyRound, Lock, ShieldAlert, ShieldCheck } from 'lucide-react';
-import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input } from '@sparktrack/ui';
+import {
+  KeyRound,
+  Lock,
+  ShieldAlert,
+  ShieldCheck,
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Input,
+} from '@sparktrack/ui';
 import { createClient } from '../../../lib/supabase/client';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';

@@ -14,7 +14,7 @@ export const viewport: Viewport = { width: 'device-width', initialScale: 1, them
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className="flex min-h-screen flex-col">
+      <body className="flex min-h-screen flex-col pb-16 md:pb-0">
         <Providers>
           <Navbar />
           <div className="flex-1">{children}</div>

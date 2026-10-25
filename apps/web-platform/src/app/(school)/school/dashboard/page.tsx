@@ -11,8 +11,15 @@ import {
   Sparkles,
   UserPlus,
   UsersRound,
-} from 'lucide-react';
-import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input } from '@sparktrack/ui';
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Input,
+} from '@sparktrack/ui';
 import { createClient } from '../../../../lib/supabase/client';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';

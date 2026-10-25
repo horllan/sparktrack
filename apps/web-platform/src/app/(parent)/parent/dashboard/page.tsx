@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { UserPlus, UsersRound } from 'lucide-react';
 import {
   Badge,
   Button,
@@ -16,6 +15,8 @@ import {
   Input,
   ShieldCheck,
   Sparkles,
+  UserPlus,
+  UsersRound,
 } from '@sparktrack/ui';
 import { createClient } from '../../../../lib/supabase/client';
 

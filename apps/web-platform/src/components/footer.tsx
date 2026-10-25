@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Compass, HeartHandshake, ShieldCheck, Sparkles, UsersRound } from 'lucide-react';
+import { Compass, HeartHandshake, ShieldCheck, Sparkles, UsersRound } from '@sparktrack/ui';
 
 export function Footer() {
   return (

@@ -3,6 +3,7 @@ import path from 'node:path';
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  devIndicators: false,
   outputFileTracingRoot: path.join(__dirname, '../..'),
   transpilePackages: ['@sparktrack/ui', '@sparktrack/contracts', '@sparktrack/offline-sync'],
   async headers() {

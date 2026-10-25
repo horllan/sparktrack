@@ -7,8 +7,15 @@ import {
   Network,
   Sparkles,
   UserPlus,
-} from 'lucide-react';
-import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input } from '@sparktrack/ui';
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Input,
+} from '@sparktrack/ui';
 import { createClient } from '../../../../lib/supabase/client';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
@@ -339,7 +346,7 @@ export default function AdminDashboardPage() {
                   onChange={(e) => setCohortTitle(e.target.value)}
                   placeholder="Cohort Title (e.g., Lagos Robotics & AI Explorer Camp)"
                 />
-                <div className="grid grid-cols-2 gap-2.5">
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                   <select
                     value={programmeType}
                     onChange={(e) => setProgrammeType(e.target.value as typeof programmeType)}
@@ -357,7 +364,7 @@ export default function AdminDashboardPage() {
                     placeholder="Max Capacity"
                   />
                 </div>
-                <div className="grid grid-cols-3 gap-2.5">
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
                   <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
                   <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
                   <Input
@@ -367,7 +374,7 @@ export default function AdminDashboardPage() {
                     placeholder="Price (kobo)"
                   />
                 </div>
-                <Button disabled={busy || cohortTitle.trim().length < 3} onClick={() => void createCohort()}>
+                <Button className="w-full sm:w-auto" disabled={busy || cohortTitle.trim().length < 3} onClick={() => void createCohort()}>
                   Create Programme Cohort
                 </Button>
               </CardContent>

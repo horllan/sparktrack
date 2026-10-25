@@ -18,8 +18,14 @@ import {
   UserPlus,
   UsersRound,
   X,
-} from 'lucide-react';
-import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@sparktrack/ui';
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@sparktrack/ui';
 
 const HERO_VIDEO_URL = process.env.NEXT_PUBLIC_HERO_VIDEO_URL ?? '';
 
