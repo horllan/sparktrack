@@ -96,6 +96,14 @@ class LearningController {
   }
 
   @ApiBearerAuth()
+  @Get('institutions/talent-pool')
+  @Roles('SCHOOL_ADMIN', 'ORG_PARTNER', 'SUPER_ADMIN')
+  @ApiOperation({ summary: 'List pseudonymized, guardian-consented learners opted into partner talent discovery' })
+  partnerTalentPool() {
+    return institutionQueries.partnerTalentPool(this.db);
+  }
+
+  @ApiBearerAuth()
   @Post('institutions/organisations')
   @Roles('SCHOOL_ADMIN', 'SUPER_ADMIN')
   @ApiOperation({ summary: 'Register a partner school, NGO, training provider, or sponsor organisation' })

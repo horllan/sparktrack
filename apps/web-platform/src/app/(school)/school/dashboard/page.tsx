@@ -75,9 +75,20 @@ interface InstitutionAnalytics {
   };
 }
 
+interface TalentPoolEntry {
+  learnerId: string;
+  displayName: string;
+  educationStage: string;
+  declaredInterests: string[];
+  schoolName: string | null;
+  allowPublicPortfolio: boolean;
+  artifactCount: number;
+}
+
 export default function SchoolDashboardPage() {
   const [data, setData] = useState<InstitutionAnalytics | null>(null);
   const [students, setStudents] = useState<ManagedStudent[]>([]);
+  const [talentPool, setTalentPool] = useState<TalentPoolEntry[]>([]);
   const [showAddStudent, setShowAddStudent] = useState(false);
 
   // Add Student Form State (for School Admin / Organisation)
@@ -114,11 +125,19 @@ export default function SchoolDashboardPage() {
       const { data: sessionData } = await createClient().auth.getSession();
       const token = sessionData.session?.access_token;
       if (!token) return;
-      const res = await fetch(`${API_URL}/v1/auth/children`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        setStudents((await res.json()) as ManagedStudent[]);
+      const [childrenRes, talentRes] = await Promise.all([
+        fetch(`${API_URL}/v1/auth/children`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch(`${API_URL}/v1/learning/institutions/talent-pool`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      ]);
+      if (childrenRes.ok) {
+        setStudents((await childrenRes.json()) as ManagedStudent[]);
+      }
+      if (talentRes.ok) {
+        setTalentPool((await talentRes.json()) as TalentPoolEntry[]);
       }
     } catch {
       // Optional when browsing unauthenticated
@@ -518,12 +537,51 @@ export default function SchoolDashboardPage() {
                 <CardHeader>
                   <CardTitle className="text-base">Guardian Opt-In Talent Discovery</CardTitle>
                   <CardDescription>
-                    Aggregate count only. Learner-level discovery profiles are not exposed through this public endpoint.
+                    Aggregate count on public views ({data.optedInLearnerCount} opted in). Authenticated school and partner accounts see pseudonymized discovery profiles below.
                   </CardDescription>
                 </CardHeader>
-                <CardContent>
-                  <p className="text-3xl font-extrabold text-slate-900">{data.optedInLearnerCount}</p>
-                  <p className="mt-1 text-sm text-slate-500">Learners opted in to partner discovery</p>
+                <CardContent className="space-y-3">
+                  <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-3.5">
+                    <p className="text-3xl font-extrabold text-slate-900">{data.optedInLearnerCount}</p>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      Learners with verified guardian consent &amp; partner discovery opt-in
+                    </p>
+                  </div>
+
+                  {talentPool.length > 0 && (
+                    <div className="space-y-2.5 pt-1">
+                      {talentPool.map((learner) => (
+                        <div
+                          key={learner.learnerId}
+                          className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200/80 bg-white p-3 text-xs"
+                        >
+                          <div>
+                            <p className="font-bold text-slate-900">{learner.displayName}</p>
+                            <p className="text-slate-500">
+                              {learner.schoolName ?? 'Independent Explorer'} • {learner.artifactCount} sealed artifacts
+                            </p>
+                            {learner.declaredInterests.length > 0 && (
+                              <div className="mt-1.5 flex flex-wrap gap-1">
+                                {learner.declaredInterests.slice(0, 3).map((interest) => (
+                                  <Badge key={interest} variant="outline">
+                                    {interest}
+                                  </Badge>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          {learner.allowPublicPortfolio && (
+                            <a
+                              href={`/portfolio/${learner.learnerId}`}
+                              className="rounded-lg border border-spark-200 bg-spark-50 px-2.5 py-1.5 font-semibold text-spark-700 hover:bg-spark-100"
+                            >
+                              View Portfolio →
+                            </a>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </div>

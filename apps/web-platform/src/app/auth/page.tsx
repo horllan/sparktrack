@@ -97,6 +97,7 @@ function AuthHubContent() {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [organisationName, setOrganisationName] = useState('');
   const [organisationType, setOrganisationType] = useState<'SCHOOL' | 'NGO' | 'TRAINING_PROVIDER'>('SCHOOL');
+  const [invitationToken, setInvitationToken] = useState('');
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -105,11 +106,15 @@ function AuthHubContent() {
   useEffect(() => {
     const modeParam = searchParams.get('mode');
     const roleParam = searchParams.get('role') as PublicRole | null;
+    const inviteParam = searchParams.get('invite');
     if (modeParam === 'signin' || modeParam === 'signup') {
       setMode(modeParam);
     }
     if (roleParam && ROLE_OPTIONS.some((r) => r.id === roleParam)) {
       setSelectedRole(roleParam);
+    }
+    if (inviteParam) {
+      setInvitationToken(inviteParam);
     }
   }, [searchParams]);
 
@@ -126,8 +131,10 @@ function AuthHubContent() {
         router.push('/student/onboarding');
         return;
       }
-      if (mode === 'signup' && selectedRole !== 'PARENT') {
-        throw new Error('School, partner, and mentor accounts require an invitation or staff approval. Contact SparkTrack to request access.');
+      if (mode === 'signup' && selectedRole !== 'PARENT' && !invitationToken.trim()) {
+        throw new Error(
+          'School, partner, and mentor accounts require a signed Staff Invitation Token (SPK-INV...). Enter your token below or request one via Contact & Support.',
+        );
       }
 
       const supabase = createClient();
@@ -155,24 +162,36 @@ function AuthHubContent() {
       }
 
       if (mode === 'signup') {
-        const regRes = await fetch(`${API_URL}/v1/auth/register-role`, {
+        const isParent = selectedRole === 'PARENT';
+        const endpoint = isParent ? `${API_URL}/v1/auth/register-role` : `${API_URL}/v1/auth/accept-invitation`;
+        const regRes = await fetch(endpoint, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({
-            role: selectedRole,
-            fullName: fullName.trim(),
-            email: email.trim(),
-            ...(phoneNumber.trim() ? { phoneNumber: phoneNumber.trim() } : {}),
-            ...(selectedRole === 'SCHOOL_ADMIN' && organisationName.trim()
+          body: JSON.stringify(
+            isParent
               ? {
-                  organisationName: organisationName.trim(),
-                  organisationType,
+                  role: 'PARENT',
+                  fullName: fullName.trim(),
+                  email: email.trim(),
+                  ...(phoneNumber.trim() ? { phoneNumber: phoneNumber.trim() } : {}),
                 }
-              : {}),
-          }),
+              : {
+                  invitationToken: invitationToken.trim(),
+                  role: selectedRole,
+                  fullName: fullName.trim(),
+                  email: email.trim(),
+                  ...(phoneNumber.trim() ? { phoneNumber: phoneNumber.trim() } : {}),
+                  ...(selectedRole === 'SCHOOL_ADMIN' && organisationName.trim()
+                    ? {
+                        organisationName: organisationName.trim(),
+                        organisationType,
+                      }
+                    : {}),
+                },
+          ),
         });
 
         if (!regRes.ok) {
@@ -447,6 +466,31 @@ function AuthHubContent() {
                           placeholder="+2348012345678"
                         />
                       </div>
+
+                      {(selectedRole === 'SCHOOL_ADMIN' || selectedRole === 'MENTOR') && (
+                        <div className="space-y-1.5 rounded-2xl border border-violet-200/80 bg-violet-50/50 p-3.5">
+                          <div className="flex items-center justify-between gap-2">
+                            <label className="text-xs font-bold text-slate-900">
+                              Staff Invitation Token (Required)
+                            </label>
+                            <Link
+                              href="/contact"
+                              className="text-[11px] font-semibold text-spark-700 underline hover:text-spark-800"
+                            >
+                              Request an Invitation →
+                            </Link>
+                          </div>
+                          <Input
+                            value={invitationToken}
+                            onChange={(e) => setInvitationToken(e.target.value)}
+                            placeholder="SPK-INV.SCHOOL_ADMIN.1799..."
+                            className="bg-white font-mono text-xs"
+                          />
+                          <p className="text-[11px] leading-4 text-slate-600">
+                            Institutional and mentor roles are protected by signed staff invitations to prevent unauthorized access to learner cohorts.
+                          </p>
+                        </div>
+                      )}
                     </>
                   )}
 

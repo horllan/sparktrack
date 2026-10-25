@@ -1,0 +1,64 @@
+name: Promote & Verify Staging (Stage 3)
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_migrations:
+        description: 'Apply pending SQL migrations to Staging DB before smoke check'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+permissions:
+  contents: read
+
+jobs:
+  staging-gate:
+    name: Staging Build, Migration & Smoke Gate
+    runs-on: ubuntu-latest
+    environment: staging
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install pnpm 9
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: Run quality & security audit gate
+        run: |
+          pnpm lint
+          pnpm typecheck
+          pnpm build
+          pnpm audit --audit-level=high
+
+      - name: Apply staging database migrations (when STAGING_DATABASE_URL is configured)
+        if: ${{ inputs.run_migrations == 'true' && env.DATABASE_URL != '' }}
+        env:
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: pnpm db:migrate
+
+      - name: Verify staging API health & cryptographic ledger integrity
+        if: ${{ vars.STAGING_API_HEALTH_URL != '' }}
+        env:
+          HEALTH_URL: ${{ vars.STAGING_API_HEALTH_URL }}
+        run: |
+          echo "Checking staging readiness at $HEALTH_URL"
+          response=$(curl --fail --silent --show-error "$HEALTH_URL")
+          echo "$response"
+          echo "$response" | grep -q '"ledgerIntegrityValid":true'
+

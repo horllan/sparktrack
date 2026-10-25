@@ -81,6 +81,18 @@ interface SupportTicket {
   createdAt: string;
 }
 
+interface ProvisionedAccount {
+  userId: string;
+  role: string;
+  fullName: string;
+  email: string | null;
+  phoneNumber: string | null;
+  organisationId: string | null;
+  organisationName: string | null;
+  isActive: boolean;
+  createdAt: string;
+}
+
 type AdminTab = 'cohorts' | 'enrolment' | 'partners' | 'graph' | 'tickets';
 
 export default function AdminDashboardPage() {
@@ -90,9 +102,16 @@ export default function AdminDashboardPage() {
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
   const [topology, setTopology] = useState<GraphTopology | null>(null);
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
+  const [accounts, setAccounts] = useState<ProvisionedAccount[]>([]);
   const [resolutionDrafts, setResolutionDrafts] = useState<Record<string, string>>({});
   const [orgName, setOrgName] = useState('');
   const [orgType, setOrgType] = useState<'SCHOOL' | 'NGO' | 'TRAINING_PROVIDER' | 'EMPLOYER' | 'GOVERNMENT'>('SCHOOL');
+
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteRole, setInviteRole] = useState<'SCHOOL_ADMIN' | 'ORG_PARTNER' | 'MENTOR'>('SCHOOL_ADMIN');
+  const [inviteFullName, setInviteFullName] = useState('');
+  const [inviteOrgName, setInviteOrgName] = useState('');
+  const [issuedToken, setIssuedToken] = useState('');
 
   const [cohortTitle, setCohortTitle] = useState('');
   const [programmeType, setProgrammeType] = useState<
@@ -150,16 +169,68 @@ export default function AdminDashboardPage() {
     }
   }, []);
 
+  const loadAccounts = useCallback(async () => {
+    try {
+      const token = await getToken();
+      if (!token) return;
+      const res = await fetch(`${API_URL}/v1/auth/admin/accounts`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        setAccounts((await res.json()) as ProvisionedAccount[]);
+      }
+    } catch {
+      // Optional when browsing unauthenticated
+    }
+  }, []);
+
   useEffect(() => {
     void loadCohorts();
     void loadTickets();
+    void loadAccounts();
     fetch(`${API_URL}/v1/graph/topology`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data) setTopology(data as GraphTopology);
       })
       .catch(() => null);
-  }, [loadCohorts, loadTickets]);
+  }, [loadCohorts, loadTickets, loadAccounts]);
+
+  async function issueInvitationToken() {
+    setBusy(true);
+    setError('');
+    setNotice('');
+    setIssuedToken('');
+    try {
+      const token = await getToken();
+      if (!token) throw new Error('Sign in with a Super Admin account first.');
+      const res = await fetch(`${API_URL}/v1/auth/admin/invitations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          email: inviteEmail.trim(),
+          role: inviteRole,
+          ...(inviteFullName.trim() ? { fullName: inviteFullName.trim() } : {}),
+          ...(inviteOrgName.trim() ? { organisationName: inviteOrgName.trim() } : {}),
+        }),
+      });
+      const body = (await res.json()) as {
+        invitationToken?: string;
+        email?: string;
+        role?: string;
+        expiresAt?: string;
+        message?: string;
+      };
+      if (!res.ok) throw new Error(body.message ?? 'Could not issue invitation token.');
+      setIssuedToken(body.invitationToken ?? '');
+      setNotice(`Issued 7-day signed ${body.role} invitation token for ${body.email}.`);
+      await loadAccounts();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not issue invitation token.');
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function updateTicketStatus(
     ticketId: string,
@@ -586,38 +657,142 @@ export default function AdminDashboardPage() {
           </div>
         )}
 
-        {/* TAB 3: PARTNER ORGANISATIONS */}
+        {/* TAB 3: PARTNER ORGANISATIONS & INVITATIONS */}
         {activeTab === 'partners' && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Register Partner School, NGO, or Sponsor</CardTitle>
-              <CardDescription>
-                Onboard institutional partners so cohorts and scholarship seats can be linked to their organisation.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-wrap gap-3">
-              <Input
-                className="max-w-md"
-                value={orgName}
-                onChange={(e) => setOrgName(e.target.value)}
-                placeholder="Organisation Name (e.g., Queen's College Lagos)"
-              />
-              <select
-                value={orgType}
-                onChange={(e) => setOrgType(e.target.value as typeof orgType)}
-                className="h-11 rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 text-sm text-slate-900"
-              >
-                <option value="SCHOOL">School</option>
-                <option value="NGO">NGO / Foundation</option>
-                <option value="TRAINING_PROVIDER">Training Provider</option>
-                <option value="EMPLOYER">Employer / Industry Partner</option>
-                <option value="GOVERNMENT">Government Agency</option>
-              </select>
-              <Button disabled={busy || orgName.trim().length < 2} onClick={() => void createOrganisation()}>
-                Register Organisation
-              </Button>
-            </CardContent>
-          </Card>
+          <div className="space-y-6">
+            <div className="grid gap-6 lg:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Register Partner School, NGO, or Sponsor</CardTitle>
+                  <CardDescription>
+                    Onboard institutional partners so cohorts and scholarship seats can be linked to their organisation.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3.5">
+                  <Input
+                    value={orgName}
+                    onChange={(e) => setOrgName(e.target.value)}
+                    placeholder="Organisation Name (e.g., Queen's College Lagos)"
+                  />
+                  <select
+                    value={orgType}
+                    onChange={(e) => setOrgType(e.target.value as typeof orgType)}
+                    className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 text-sm text-slate-900"
+                  >
+                    <option value="SCHOOL">School</option>
+                    <option value="NGO">NGO / Foundation</option>
+                    <option value="TRAINING_PROVIDER">Training Provider</option>
+                    <option value="EMPLOYER">Employer / Industry Partner</option>
+                    <option value="GOVERNMENT">Government Agency</option>
+                  </select>
+                  <Button disabled={busy || orgName.trim().length < 2} onClick={() => void createOrganisation()}>
+                    Register Organisation
+                  </Button>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Issue Institutional / Mentor Invitation Token</CardTitle>
+                  <CardDescription>
+                    Generate a 7-day HMAC-signed invitation token (SPK-INV...) so an approved School Admin, Partner, or Mentor can register on /auth.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3.5">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Input
+                      type="email"
+                      value={inviteEmail}
+                      onChange={(e) => setInviteEmail(e.target.value)}
+                      placeholder="Recipient Email (e.g. principal@school.edu.ng)"
+                    />
+                    <select
+                      value={inviteRole}
+                      onChange={(e) => setInviteRole(e.target.value as typeof inviteRole)}
+                      className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 text-sm text-slate-900"
+                    >
+                      <option value="SCHOOL_ADMIN">School Administrator</option>
+                      <option value="ORG_PARTNER">Partner Organisation</option>
+                      <option value="MENTOR">Educator / Industry Mentor</option>
+                    </select>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Input
+                      value={inviteFullName}
+                      onChange={(e) => setInviteFullName(e.target.value)}
+                      placeholder="Recipient Full Name (optional)"
+                    />
+                    <Input
+                      value={inviteOrgName}
+                      onChange={(e) => setInviteOrgName(e.target.value)}
+                      placeholder="School / Organisation Name (optional)"
+                    />
+                  </div>
+                  <Button
+                    disabled={busy || !inviteEmail.includes('@')}
+                    onClick={() => void issueInvitationToken()}
+                  >
+                    Generate Signed Invitation Token
+                  </Button>
+                  {issuedToken && (
+                    <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 p-3 text-xs text-emerald-950">
+                      <p className="font-bold">Signed Invitation Token (valid 7 days):</p>
+                      <code className="mt-1 block break-all rounded bg-white p-2 font-mono text-[11px] font-semibold text-slate-900">
+                        {issuedToken}
+                      </code>
+                      <p className="mt-1.5 text-[11px] text-emerald-800">
+                        Share this token with the recipient to enter on <strong>/auth?mode=signup&amp;role={inviteRole}</strong>
+                      </p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+
+            <Card>
+              <CardHeader>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <CardTitle className="text-base">
+                      Provisioned Institutional, Mentor &amp; Operations Accounts ({accounts.length})
+                    </CardTitle>
+                    <CardDescription>
+                      Verified non-parent staff, school administrators, partner coordinators, and mentors in core.users.
+                    </CardDescription>
+                  </div>
+                  <Button size="sm" variant="outline" disabled={busy} onClick={() => void loadAccounts()}>
+                    Refresh Accounts
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {accounts.length === 0 ? (
+                  <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 p-4 text-center text-xs text-slate-500">
+                    Sign in with a Super Admin account to view provisioned institutional and mentor accounts.
+                  </p>
+                ) : (
+                  <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+                    {accounts.map((acc) => (
+                      <div
+                        key={acc.userId}
+                        className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-3 text-xs"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-bold text-slate-900">{acc.fullName}</span>
+                          <Badge variant={acc.role === 'SUPER_ADMIN' ? 'warning' : 'default'}>{acc.role}</Badge>
+                        </div>
+                        <p className="mt-1 text-slate-600">{acc.email ?? 'No email recorded'}</p>
+                        {acc.organisationName && (
+                          <p className="mt-0.5 font-medium text-spark-700">{acc.organisationName}</p>
+                        )}
+                        <p className="mt-1 font-mono text-[10px] text-slate-400">ID: {acc.userId}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         )}
 
         {/* TAB 4: CAPABILITY GRAPH TOPOLOGY INSPECTOR */}

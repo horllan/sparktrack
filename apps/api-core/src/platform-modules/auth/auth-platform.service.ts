@@ -238,6 +238,103 @@ export class AuthPlatformService {
     });
   }
 
+  async issueInvitation(payload: {
+    email: string;
+    role: 'SCHOOL_ADMIN' | 'ORG_PARTNER' | 'MENTOR';
+    fullName?: string;
+    organisationName?: string;
+    organisationType?: 'SCHOOL' | 'NGO' | 'TRAINING_PROVIDER' | 'EMPLOYER' | 'GOVERNMENT';
+    targetUserId?: string;
+  }) {
+    const normalizedEmail = payload.email.trim().toLowerCase();
+    const expiresEpoch = Math.floor(Date.now() / 1000) + 7 * 86_400;
+    const signature = this.signInvitation(normalizedEmail, payload.role, expiresEpoch);
+    const invitationToken = `SPK-INV.${payload.role}.${expiresEpoch}.${signature}`;
+
+    let provisionedUser: { userId: string; role: string; organisationId: string | null } | null = null;
+    if (payload.targetUserId) {
+      const res = await onboardingQueries.provisionPrivilegedRole(this.db, payload.targetUserId, {
+        role: payload.role,
+        fullName: payload.fullName?.trim() || normalizedEmail,
+        email: normalizedEmail,
+        organisationName: payload.organisationName,
+        organisationType: payload.organisationType,
+      });
+      provisionedUser = {
+        userId: res.userId,
+        role: res.role,
+        organisationId: res.organisationId,
+      };
+    }
+
+    return {
+      invitationToken,
+      email: normalizedEmail,
+      role: payload.role,
+      expiresAt: new Date(expiresEpoch * 1000).toISOString(),
+      provisionedUser,
+    };
+  }
+
+  async acceptInvitation(
+    user: AuthUser,
+    payload: {
+      invitationToken: string;
+      role: 'SCHOOL_ADMIN' | 'ORG_PARTNER' | 'MENTOR';
+      fullName: string;
+      email: string;
+      phoneNumber?: string;
+      organisationName?: string;
+      organisationType?: 'SCHOOL' | 'NGO' | 'TRAINING_PROVIDER' | 'EMPLOYER' | 'GOVERNMENT';
+    },
+  ) {
+    const parts = payload.invitationToken.trim().split('.');
+    if (parts.length !== 4 || parts[0] !== 'SPK-INV') {
+      throw new ForbiddenException('Invalid invitation token format.');
+    }
+
+    const [, tokenRole, expiresStr, suppliedSig] = parts;
+    const expiresEpoch = Number(expiresStr);
+    if (!Number.isFinite(expiresEpoch) || expiresEpoch <= Math.floor(Date.now() / 1000)) {
+      throw new ForbiddenException('This invitation token has expired. Request a fresh token from SparkTrack Operations.');
+    }
+    if (tokenRole !== payload.role) {
+      throw new ForbiddenException(`This invitation token is scoped to role ${tokenRole}, not ${payload.role}.`);
+    }
+
+    const normalizedEmail = payload.email.trim().toLowerCase();
+    const expectedSig = this.signInvitation(normalizedEmail, payload.role, expiresEpoch);
+    const expectedBuf = Buffer.from(expectedSig, 'hex');
+    const suppliedBuf = Buffer.from(suppliedSig ?? '', 'hex');
+
+    if (expectedBuf.length === 0 || expectedBuf.length !== suppliedBuf.length || !timingSafeEqual(expectedBuf, suppliedBuf)) {
+      throw new ForbiddenException('Invalid invitation token signature or email mismatch.');
+    }
+
+    return onboardingQueries.provisionPrivilegedRole(this.db, user.id, {
+      role: payload.role,
+      fullName: payload.fullName,
+      email: normalizedEmail,
+      phoneNumber: payload.phoneNumber,
+      organisationName: payload.organisationName,
+      organisationType: payload.organisationType,
+    });
+  }
+
+  async listInstitutionalAccounts() {
+    return onboardingQueries.listInstitutionalAndMentorAccounts(this.db);
+  }
+
+  private signInvitation(email: string, role: string, expiresEpoch: number): string {
+    const secret =
+      this.config.get<string>('ADMIN_REGISTRATION_SECRET') ??
+      this.config.getOrThrow<string>('CONSENT_OTP_SECRET');
+    return createHmac('sha256', secret)
+      .update(`invite:${email}:${role}:${expiresEpoch}`)
+      .digest('hex')
+      .slice(0, 32);
+  }
+
   private hashCode(challengeId: string, code: string): string {
     const secret = this.config.getOrThrow<string>('CONSENT_OTP_SECRET');
     if (Buffer.byteLength(secret, 'utf8') < 32) {

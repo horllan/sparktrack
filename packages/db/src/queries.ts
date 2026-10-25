@@ -613,6 +613,105 @@ export const onboardingQueries = {
     `.execute(db);
     return { userId, role: 'SUPER_ADMIN' as const };
   },
+
+  async provisionPrivilegedRole(
+    db: Db,
+    userId: string,
+    p: {
+      role: 'SCHOOL_ADMIN' | 'ORG_PARTNER' | 'MENTOR';
+      fullName: string;
+      email?: string;
+      phoneNumber?: string;
+      organisationName?: string;
+      organisationType?: 'SCHOOL' | 'NGO' | 'TRAINING_PROVIDER' | 'EMPLOYER' | 'GOVERNMENT';
+    },
+  ) {
+    return db.transaction().execute(async (trx) => {
+      let organisationId: string | null = null;
+      if (p.organisationName?.trim()) {
+        const org = await sql<{ id: string }>`
+          INSERT INTO core.organisations (name, org_type, country_code, subscription_tier)
+          VALUES (
+            ${p.organisationName.trim()},
+            ${p.organisationType ?? 'SCHOOL'},
+            'NG',
+            'FREE_PILOT'
+          )
+          RETURNING id
+        `.execute(trx);
+        organisationId = org.rows[0]!.id;
+      }
+
+      await sql`
+        INSERT INTO core.users (id, role, full_name, email, phone_number, organisation_id, is_active)
+        VALUES (
+          ${userId}::uuid,
+          ${p.role}::core.user_role,
+          ${p.fullName.trim()},
+          ${p.email ?? null},
+          ${p.phoneNumber ?? null},
+          ${organisationId}::uuid,
+          TRUE
+        )
+        ON CONFLICT (id) DO UPDATE SET
+          role = EXCLUDED.role,
+          full_name = EXCLUDED.full_name,
+          email = COALESCE(EXCLUDED.email, core.users.email),
+          phone_number = COALESCE(EXCLUDED.phone_number, core.users.phone_number),
+          organisation_id = COALESCE(EXCLUDED.organisation_id, core.users.organisation_id),
+          is_active = TRUE
+      `.execute(trx);
+
+      return {
+        status: 'provisioned' as const,
+        userId,
+        role: p.role,
+        organisationId,
+      };
+    });
+  },
+
+  async listInstitutionalAndMentorAccounts(db: Db) {
+    const r = await sql<{
+      id: string;
+      role: string;
+      full_name: string;
+      email: string | null;
+      phone_number: string | null;
+      organisation_id: string | null;
+      organisation_name: string | null;
+      is_active: boolean;
+      created_at: Date;
+    }>`
+      SELECT
+        u.id,
+        u.role::text,
+        u.full_name,
+        u.email,
+        u.phone_number,
+        u.organisation_id,
+        o.name AS organisation_name,
+        u.is_active,
+        u.created_at
+      FROM core.users u
+      LEFT JOIN core.organisations o ON o.id = u.organisation_id
+      WHERE u.role IN ('SCHOOL_ADMIN', 'ORG_PARTNER', 'MENTOR', 'SUPER_ADMIN')
+      ORDER BY u.created_at DESC
+      LIMIT 50
+    `.execute(db);
+
+    return r.rows.map((row) => ({
+      userId: row.id,
+      role: row.role,
+      fullName: row.full_name,
+      email: row.email,
+      phoneNumber: row.phone_number,
+      organisationId: row.organisation_id,
+      organisationName: row.organisation_name,
+      isActive: row.is_active,
+      createdAt: row.created_at.toISOString(),
+    }));
+  },
 };
 
 export const consentQueries = {
@@ -1495,6 +1594,49 @@ export const institutionQueries = {
       activeSkillsSnapshot: row.active_skills_snapshot,
       lastEvidenceDate: row.last_evidence_date ? row.last_evidence_date.toISOString() : null,
     }));
+  },
+
+  async partnerTalentPool(db: Db) {
+    const r = await sql<{
+      learner_id: string;
+      full_name: string;
+      education_stage: string;
+      declared_interests: string[];
+      school_name: string | null;
+      allow_public_portfolio: boolean;
+      artifact_count: string;
+    }>`
+      SELECT
+        lp.learner_id,
+        u.full_name,
+        lp.education_stage,
+        lp.declared_interests,
+        o.name AS school_name,
+        lp.allow_public_portfolio,
+        COUNT(a.id)::text AS artifact_count
+      FROM core.learner_profiles lp
+      JOIN core.users u ON u.id = lp.learner_id
+      LEFT JOIN core.organisations o ON o.id = lp.current_school_id
+      LEFT JOIN evidence.artifacts a ON a.learner_id = lp.learner_id
+      WHERE lp.consent_status = 'VERIFIED_ACTIVE'
+        AND lp.allow_partner_talent_discovery = TRUE
+      GROUP BY lp.learner_id, u.full_name, lp.education_stage, lp.declared_interests, o.name, lp.allow_public_portfolio
+      ORDER BY COUNT(a.id) DESC, lp.updated_at DESC
+      LIMIT 30
+    `.execute(db);
+
+    return r.rows.map((row) => {
+      const firstName = row.full_name.trim().split(/\s+/)[0] ?? 'Explorer';
+      return {
+        learnerId: row.learner_id,
+        displayName: `${firstName} (${row.education_stage})`,
+        educationStage: row.education_stage,
+        declaredInterests: row.declared_interests ?? [],
+        schoolName: row.school_name,
+        allowPublicPortfolio: row.allow_public_portfolio,
+        artifactCount: Number(row.artifact_count),
+      };
+    });
   },
 };
 

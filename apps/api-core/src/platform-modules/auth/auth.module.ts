@@ -48,6 +48,25 @@ const BootstrapAdminSchema = z.object({
   adminSecret: z.string().min(16).max(256),
 });
 
+export const IssueInvitationSchema = z.object({
+  email: z.string().email(),
+  role: z.enum(['SCHOOL_ADMIN', 'ORG_PARTNER', 'MENTOR']),
+  fullName: z.string().min(2).max(120).optional(),
+  organisationName: z.string().min(2).max(160).optional(),
+  organisationType: z.enum(['SCHOOL', 'NGO', 'TRAINING_PROVIDER', 'EMPLOYER', 'GOVERNMENT']).optional(),
+  targetUserId: z.string().uuid().optional(),
+});
+
+export const AcceptInvitationSchema = z.object({
+  invitationToken: z.string().min(16).max(240),
+  role: z.enum(['SCHOOL_ADMIN', 'ORG_PARTNER', 'MENTOR']),
+  fullName: z.string().min(2).max(120),
+  email: z.string().email(),
+  phoneNumber: z.string().min(7).max(24).optional(),
+  organisationName: z.string().min(2).max(160).optional(),
+  organisationType: z.enum(['SCHOOL', 'NGO', 'TRAINING_PROVIDER', 'EMPLOYER', 'GOVERNMENT']).optional(),
+});
+
 @ApiTags('auth')
 @ApiBearerAuth()
 @Controller('v1/auth')
@@ -63,9 +82,30 @@ class AuthController {
 
   @Post('register-role')
   @AllowUnprovisionedLearner()
-  @ApiOperation({ summary: 'Provision a Parent/Guardian, School Admin, Partner Organisation, or Mentor account' })
+  @ApiOperation({ summary: 'Provision a Parent/Guardian account' })
   registerRole(@CurrentUser() user: AuthUser, @Body() body: unknown) {
     return this.auth.registerRole(user, RegisterRoleSchema.parse(body));
+  }
+
+  @Post('accept-invitation')
+  @AllowUnprovisionedLearner()
+  @ApiOperation({ summary: 'Accept a signed staff invitation token to provision a School Admin, Partner, or Mentor account' })
+  acceptInvitation(@CurrentUser() user: AuthUser, @Body() body: unknown) {
+    return this.auth.acceptInvitation(user, AcceptInvitationSchema.parse(body));
+  }
+
+  @Get('admin/accounts')
+  @Roles('SUPER_ADMIN')
+  @ApiOperation({ summary: 'List provisioned School Admin, Partner Organisation, Mentor, and Super Admin accounts' })
+  listInstitutionalAccounts() {
+    return this.auth.listInstitutionalAccounts();
+  }
+
+  @Post('admin/invitations')
+  @Roles('SUPER_ADMIN')
+  @ApiOperation({ summary: 'Issue a signed invitation token or directly provision an Institutional / Mentor account' })
+  issueInvitation(@Body() body: unknown) {
+    return this.auth.issueInvitation(IssueInvitationSchema.parse(body));
   }
 
   @Get('children')
