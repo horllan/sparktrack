@@ -8,7 +8,7 @@ import { ledgerQueries, onboardingQueries } from './queries.js';
 
 dotenv.config({ path: resolve(process.cwd(), '../../.env') });
 
-const databaseUrl = process.env.DIRECT_DATABASE_URL || process.env.DATABASE_URL;
+const databaseUrl = process.env.DATABASE_URL || process.env.DIRECT_DATABASE_URL;
 const db = databaseUrl ? createKyselyClient(databaseUrl) : null;
 
 describe('cryptographic ledger immutability', () => {

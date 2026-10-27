@@ -60,7 +60,7 @@ export class RecommendationEngineService {
     ]);
     const facts = this.buildFacts(ctx, skills, affinities, signals);
 
-    const model = this.config.get<string>('GEMINI_SYNTHESIS_ADVISOR_MODEL') ?? 'gemini-2.5-pro';
+    const model = this.config.get<string>('GEMINI_SYNTHESIS_ADVISOR_MODEL') ?? 'gemini-flash-latest';
     let narratives: Record<string, string> | null = null;
     let used = model;
     for (let attempt = 0; attempt < 2 && !narratives; attempt++) {
@@ -102,7 +102,13 @@ export class RecommendationEngineService {
   }
 
   private async callGemini(modelName: string, facts: object, strict: boolean): Promise<Record<string, string>> {
-    const genAI = new GoogleGenerativeAI(this.config.getOrThrow<string>('GOOGLE_GENERATIVE_AI_API_KEY'));
+    const apiKey =
+      this.config.get<string>('GOOGLE_GENERATIVE_AI_API_KEY') ??
+      this.config.get<string>('GOOGLE_API_KEY');
+    if (!apiKey || apiKey.includes('your-')) {
+      throw new Error('Neither GOOGLE_GENERATIVE_AI_API_KEY nor GOOGLE_API_KEY is configured.');
+    }
+    const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({
       model: modelName, systemInstruction: SYSTEM_PROMPT,
       generationConfig: { responseMimeType: 'application/json', temperature: strict ? 0.2 : 0.6 },
@@ -110,7 +116,9 @@ export class RecommendationEngineService {
     const prompt = `Keys required: ${REPORT_SECTIONS.map((s) => s.key).join(', ')}\n` +
       (strict ? 'A previous draft violated the exploration-only rules. Be strictly exploratory.\n' : '') +
       `Data:\n${JSON.stringify(facts)}`;
-    const res = await model.generateContent(prompt);
+    const res = await model.generateContent({
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    }, { timeout: 12000 });
     const parsed = JSON.parse(res.response.text()) as { sections?: Record<string, unknown> };
     const out: Record<string, string> = {};
     for (const s of REPORT_SECTIONS) {

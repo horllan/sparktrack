@@ -1,9 +1,9 @@
 import { createHash, createHmac, randomUUID } from 'node:crypto';
-import { Inject, Injectable } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 export interface PresignedR2Ticket {
-  provider: 'CLOUDFLARE_R2_S3_V4' | 'LOCAL_HMAC_FALLBACK';
+  provider: 'CLOUDFLARE_R2_S3_V4';
   bucketName: string;
   r2Key: string;
   uploadUrl: string;
@@ -17,16 +17,7 @@ export class CloudflareR2Service {
   constructor(@Inject(ConfigService) private readonly config: ConfigService) {}
 
   isConfigured(): boolean {
-    const accountId = this.config.get<string>('R2_ACCOUNT_ID')?.trim();
-    const accessKeyId = this.config.get<string>('R2_ACCESS_KEY_ID')?.trim();
-    const secretAccessKey = this.config.get<string>('R2_SECRET_ACCESS_KEY')?.trim();
-    return Boolean(
-      accountId &&
-        accessKeyId &&
-        secretAccessKey &&
-        !accountId.includes('your-') &&
-        !accessKeyId.includes('your-'),
-    );
+    return this.getCredentials() !== null;
   }
 
   presignUpload(p: {
@@ -35,73 +26,72 @@ export class CloudflareR2Service {
     contentType: string;
     expiresInSeconds?: number;
   }): PresignedR2Ticket {
+    const credentials = this.getCredentials();
+    if (!credentials) {
+      throw new ServiceUnavailableException('Cloudflare R2 is not configured for evidence uploads.');
+    }
+    if (/[\r\n]/.test(p.contentType)) {
+      throw new BadRequestException('Invalid content type for evidence upload.');
+    }
+
     const safeFile = p.fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
     const r2Key = `learners/${p.learnerId}/artifacts/${randomUUID()}-${safeFile}`;
     const bucketName = this.config.get<string>('R2_BUCKET_NAME')?.trim() || 'sparktrack-evidence-artifacts';
     const expiresSeconds = Math.min(Math.max(p.expiresInSeconds ?? 900, 60), 3600);
+    const contentType = p.contentType.trim();
     const now = new Date();
     const expiresAt = new Date(now.getTime() + expiresSeconds * 1000).toISOString();
 
+    const host = `${credentials.accountId}.r2.cloudflarestorage.com`;
+    const uploadUrl = this.signS3V4Url({
+      method: 'PUT',
+      host,
+      bucketName,
+      objectKey: r2Key,
+      accessKeyId: credentials.accessKeyId,
+      secretAccessKey: credentials.secretAccessKey,
+      contentType,
+      expiresSeconds,
+      now,
+    });
+    const downloadUrl = this.signS3V4Url({
+      method: 'GET',
+      host,
+      bucketName,
+      objectKey: r2Key,
+      accessKeyId: credentials.accessKeyId,
+      secretAccessKey: credentials.secretAccessKey,
+      expiresSeconds: 3600,
+      now,
+    });
+
+    return {
+      provider: 'CLOUDFLARE_R2_S3_V4',
+      bucketName,
+      r2Key,
+      uploadUrl,
+      downloadUrl,
+      expiresAt,
+      contentType,
+    };
+  }
+
+  private getCredentials(): { accountId: string; accessKeyId: string; secretAccessKey: string } | null {
     const accountId = this.config.get<string>('R2_ACCOUNT_ID')?.trim();
     const accessKeyId = this.config.get<string>('R2_ACCESS_KEY_ID')?.trim();
     const secretAccessKey = this.config.get<string>('R2_SECRET_ACCESS_KEY')?.trim();
-
     if (
-      accountId &&
-      accessKeyId &&
-      secretAccessKey &&
-      !accountId.includes('your-') &&
-      !accessKeyId.includes('your-')
+      !accountId ||
+      !accessKeyId ||
+      !secretAccessKey ||
+      [accountId, accessKeyId, secretAccessKey].some((value) => {
+        const normalized = value.toLowerCase();
+        return normalized.startsWith('your-') || normalized.startsWith('replace_with');
+      })
     ) {
-      const host = `${accountId}.r2.cloudflarestorage.com`;
-      const uploadUrl = this.signS3V4Url({
-        method: 'PUT',
-        host,
-        bucketName,
-        objectKey: r2Key,
-        accessKeyId,
-        secretAccessKey,
-        expiresSeconds,
-        now,
-      });
-      const downloadUrl = this.signS3V4Url({
-        method: 'GET',
-        host,
-        bucketName,
-        objectKey: r2Key,
-        accessKeyId,
-        secretAccessKey,
-        expiresSeconds: 3600,
-        now,
-      });
-
-      return {
-        provider: 'CLOUDFLARE_R2_S3_V4',
-        bucketName,
-        r2Key,
-        uploadUrl,
-        downloadUrl,
-        expiresAt,
-        contentType: p.contentType,
-      };
+      return null;
     }
-
-    const endpoint = this.config.get<string>('R2_PUBLIC_ENDPOINT') ?? 'https://r2.sparktrack.africa';
-    const signingSecret = secretAccessKey ?? 'dev-r2-signing-key';
-    const signature = createHmac('sha256', signingSecret)
-      .update(`${r2Key}:${p.contentType}:${expiresAt}`)
-      .digest('hex');
-    const fallbackUrl = `${endpoint.replace(/\/$/, '')}/${r2Key}?expires=${encodeURIComponent(expiresAt)}&sig=${signature}`;
-
-    return {
-      provider: 'LOCAL_HMAC_FALLBACK',
-      bucketName,
-      r2Key,
-      uploadUrl: fallbackUrl,
-      downloadUrl: fallbackUrl,
-      expiresAt,
-      contentType: p.contentType,
-    };
+    return { accountId, accessKeyId, secretAccessKey };
   }
 
   private signS3V4Url(p: {
@@ -111,6 +101,7 @@ export class CloudflareR2Service {
     objectKey: string;
     accessKeyId: string;
     secretAccessKey: string;
+    contentType?: string;
     expiresSeconds: number;
     now: Date;
   }): string {
@@ -131,7 +122,7 @@ export class CloudflareR2Service {
       ['X-Amz-Credential', `${p.accessKeyId}/${credentialScope}`],
       ['X-Amz-Date', isoBasic],
       ['X-Amz-Expires', String(p.expiresSeconds)],
-      ['X-Amz-SignedHeaders', 'host'],
+      ['X-Amz-SignedHeaders', p.contentType ? 'content-type;host' : 'host'],
     ];
     queryParams.sort(([a], [b]) => a.localeCompare(b));
 
@@ -139,8 +130,10 @@ export class CloudflareR2Service {
       .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
       .join('&');
 
-    const canonicalHeaders = `host:${p.host}\n`;
-    const signedHeaders = 'host';
+    const canonicalHeaders = p.contentType
+      ? `content-type:${p.contentType}\nhost:${p.host}\n`
+      : `host:${p.host}\n`;
+    const signedHeaders = p.contentType ? 'content-type;host' : 'host';
     const payloadHash = 'UNSIGNED-PAYLOAD';
 
     const canonicalRequest = [
@@ -164,4 +157,3 @@ export class CloudflareR2Service {
     return `https://${p.host}${canonicalUri}?${canonicalQueryString}&X-Amz-Signature=${signature}`;
   }
 }
-

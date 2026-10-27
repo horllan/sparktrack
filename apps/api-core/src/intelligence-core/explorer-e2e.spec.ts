@@ -16,7 +16,7 @@ try {
   // Optional in CI environments where env vars are injected directly
 }
 
-const databaseUrl = process.env.DIRECT_DATABASE_URL || process.env.DATABASE_URL;
+const databaseUrl = process.env.DATABASE_URL || process.env.DIRECT_DATABASE_URL;
 const db = databaseUrl ? createKyselyClient(databaseUrl) : null;
 
 describe('Section 37: 13-Year-Old Explorer End-to-End Pipeline', () => {
@@ -138,7 +138,7 @@ describe('Section 37: 13-Year-Old Explorer End-to-End Pipeline', () => {
       expect(report.guardrailResult.deterministicViolations).toHaveLength(0);
       expect(report.declaredVsObserved.narrative).toMatch(/Graphic Design/i);
     },
-    30_000,
+    90_000,
   );
 });
 

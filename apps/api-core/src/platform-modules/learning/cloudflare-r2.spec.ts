@@ -31,8 +31,21 @@ describe('Cloudflare R2 & Upstash Redis Infrastructure Services', () => {
     expect(uploadUrl.hostname).toBe('00000000000000000000000000000001.r2.cloudflarestorage.com');
     expect(uploadUrl.pathname).toContain('/sparktrack-evidence-artifacts/learners/');
     expect(uploadUrl.searchParams.get('X-Amz-Algorithm')).toBe('AWS4-HMAC-SHA256');
-    expect(uploadUrl.searchParams.get('X-Amz-SignedHeaders')).toBe('host');
+    expect(uploadUrl.searchParams.get('X-Amz-SignedHeaders')).toBe('content-type;host');
     expect(uploadUrl.searchParams.get('X-Amz-Signature')).toMatch(/^[0-9a-f]{64}$/);
+    expect(ticket.contentType).toBe('application/pdf');
+  });
+
+  it('fails closed when R2 credentials are missing', () => {
+    const r2 = new CloudflareR2Service(new ConfigService({}));
+    expect(r2.isConfigured()).toBe(false);
+    expect(() =>
+      r2.presignUpload({
+        learnerId: '11111111-1111-4111-8111-111111111113',
+        fileName: 'evidence.pdf',
+        contentType: 'application/pdf',
+      }),
+    ).toThrow('Cloudflare R2 is not configured for evidence uploads.');
   });
 
   it('gracefully handles unconfigured Upstash Redis in isolated unit tests and connects when configured', async () => {

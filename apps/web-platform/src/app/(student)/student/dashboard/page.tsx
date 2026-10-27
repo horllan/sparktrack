@@ -179,39 +179,50 @@ export default function StudentDashboardPage() {
     try {
       const storageR2Keys: string[] = [];
       if (attachmentFile) {
-        try {
-          const { data: sessionData } = await createClient().auth.getSession();
-          const token = sessionData.session?.access_token;
-          if (token) {
-            const presignRes = await fetch(`${API_URL}/v1/learning/storage/presign`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${token}`,
-              },
-              body: JSON.stringify({
-                learnerId: userId,
-                fileName: attachmentFile.name,
-                contentType: attachmentFile.type || 'application/octet-stream',
-              }),
-            });
-            if (presignRes.ok) {
-              const ticket = (await presignRes.json()) as {
-                r2Key: string;
-                uploadUrl: string;
-              };
-              storageR2Keys.push(ticket.r2Key);
-              await fetch(ticket.uploadUrl, {
+        const { data: sessionData } = await createClient().auth.getSession();
+        const token = sessionData.session?.access_token;
+        if (token) {
+          const presignRes = await fetch(`${API_URL}/v1/learning/storage/presign`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              learnerId: userId,
+              fileName: attachmentFile.name,
+              contentType: attachmentFile.type || 'application/octet-stream',
+            }),
+          });
+          if (presignRes.ok) {
+            const ticket = (await presignRes.json()) as {
+              r2Key: string;
+              uploadUrl: string;
+              contentType: string;
+            };
+            let uploadRes: Response;
+            try {
+              uploadRes = await fetch(ticket.uploadUrl, {
                 method: 'PUT',
                 headers: {
-                  'Content-Type': attachmentFile.type || 'application/octet-stream',
+                  'Content-Type': ticket.contentType,
                 },
                 body: attachmentFile,
-              }).catch(() => null);
+              });
+            } catch {
+              throw new Error(
+                'Attachment upload was blocked or unavailable. Verify that the R2 CORS policy allows this origin, PUT, and Content-Type. Your project was not submitted.',
+              );
             }
+            if (!uploadRes.ok) {
+              throw new Error(`Attachment upload failed (HTTP ${uploadRes.status}). Your project was not submitted.`);
+            }
+            storageR2Keys.push(ticket.r2Key);
+          } else {
+            throw new Error(`Could not prepare the attachment upload (HTTP ${presignRes.status}). Your project was not submitted.`);
           }
-        } catch {
-          // Offline or bucket CORS pending — continue with offline queue
+        } else {
+          throw new Error('Sign in again before uploading your attachment.');
         }
       }
 
