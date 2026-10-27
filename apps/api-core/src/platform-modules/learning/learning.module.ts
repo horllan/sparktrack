@@ -125,8 +125,8 @@ class LearningController {
 
   @ApiBearerAuth()
   @Post('institutions/refresh-summary')
-  @Roles('SCHOOL_ADMIN', 'SUPER_ADMIN')
-  @ApiOperation({ summary: 'Concurrently refresh analytics.mv_learner_development_summary materialized view' })
+  @Roles('SUPER_ADMIN')
+  @ApiOperation({ summary: 'Refresh analytics.mv_learner_development_summary materialized view' })
   refreshMaterializedSummary() {
     return institutionQueries.refreshMaterializedSummary(this.db);
   }

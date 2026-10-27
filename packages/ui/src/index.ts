@@ -5,6 +5,7 @@ export { Input } from './components/input';
 export { Badge, badgeVariants } from './components/badge';
 export {
   Activity,
+  AlertCircle,
   ArrowLeft,
   ArrowRight,
   ArrowUpRight,
@@ -14,6 +15,7 @@ export {
   CheckCircle2,
   ChevronRight,
   Compass,
+  Database,
   FileText,
   FolderKanban,
   Globe,
@@ -39,7 +41,9 @@ export {
   ShieldAlert,
   ShieldCheck,
   Sparkles,
+  UserCheck,
   UserPlus,
   UsersRound,
+  WifiOff,
   X,
 } from 'lucide-react';

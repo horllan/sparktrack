@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import { resolve } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { ConfigService } from '@nestjs/config';
 import { sql } from 'kysely';
@@ -10,13 +9,14 @@ import { ProgressEngineService } from './progress-engine/progress-engine.service
 import { PathwayEngineService } from './pathway-engine/pathway-engine.service';
 import { RecommendationEngineService } from './recommendation-engine/recommendation-engine.service';
 
-try {
-  process.loadEnvFile(resolve(process.cwd(), '../../.env'));
-} catch {
-  // Optional in CI environments where env vars are injected directly
+const databaseUrl = process.env.SPARKTRACK_TEST_DATABASE_URL;
+if (databaseUrl) {
+  const hostname = new URL(databaseUrl).hostname;
+  if (!['localhost', '127.0.0.1', '::1', '[::1]'].includes(hostname)) {
+    throw new Error('SPARKTRACK_TEST_DATABASE_URL must target a local disposable database.');
+  }
 }
 
-const databaseUrl = process.env.DATABASE_URL || process.env.DIRECT_DATABASE_URL;
 const db = databaseUrl ? createKyselyClient(databaseUrl) : null;
 
 describe('Section 37: 13-Year-Old Explorer End-to-End Pipeline', () => {
@@ -108,7 +108,7 @@ describe('Section 37: 13-Year-Old Explorer End-to-End Pipeline', () => {
       const pathwayEngine = new PathwayEngineService(db!, graphService, skillEngine);
       const recommendationEngine = new RecommendationEngineService(
         db!,
-        new ConfigService({}),
+        new ConfigService({ GOOGLE_GENERATIVE_AI_API_KEY: 'your-test-placeholder' }),
         skillEngine,
         pathwayEngine,
       );
@@ -141,4 +141,3 @@ describe('Section 37: 13-Year-Old Explorer End-to-End Pipeline', () => {
     90_000,
   );
 });
-

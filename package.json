@@ -15,7 +15,10 @@
     "test": "turbo run test",
     "db:migrate": "pnpm --filter @sparktrack/db migrate",
     "db:status": "pnpm --filter @sparktrack/db migrate:status",
-    "db:seed": "pnpm --filter @sparktrack/db seed"
+    "db:seed": "pnpm --filter @sparktrack/db seed",
+    "stage:verify": "pnpm --filter @sparktrack/db exec tsx ../../scripts/verify-stage3.ts",
+    "stage:up": "docker compose -f docker-compose.staging.yml up -d",
+    "stage:down": "docker compose -f docker-compose.staging.yml down"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^8.18.0",

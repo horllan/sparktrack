@@ -20,6 +20,7 @@ import { SupportModule } from './platform-modules/support/support.module';
 import { DatabaseModule } from './common/database/database.module';
 import { AuthCoreModule } from './common/auth/auth-core.module';
 import { UpstashCacheModule } from './common/cache/upstash-cache.module';
+import { HealthModule } from './common/health/health.module';
 import { ZodExceptionFilter } from './common/filters/zod-exception.filter';
 
 function resolveRedisUrl(): string {
@@ -59,6 +60,7 @@ function redisConnection() {
     DatabaseModule,
     AuthCoreModule,
     UpstashCacheModule,
+    HealthModule,
     // Intelligence Core (headless IP) — must never import platform-modules
     EvidenceEngineModule, SkillEngineModule, CapabilityGraphModule, ProgressEngineModule,
     PathwayEngineModule, RecommendationEngineModule, PipelineModule,

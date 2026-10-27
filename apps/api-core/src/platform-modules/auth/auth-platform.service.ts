@@ -210,6 +210,12 @@ export class AuthPlatformService {
     ) {
       throw new ForbiddenException('Unauthorized to list managed learners.');
     }
+    if (
+      (user.role === 'SCHOOL_ADMIN' || user.role === 'ORG_PARTNER') &&
+      !user.organisationId
+    ) {
+      throw new ForbiddenException('Your account is not assigned to an organisation.');
+    }
     return onboardingQueries.listManagedLearners(this.db, user);
   }
 

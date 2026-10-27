@@ -1,14 +1,13 @@
 import { randomUUID } from 'node:crypto';
-import { resolve } from 'node:path';
-import * as dotenv from 'dotenv';
 import { afterAll, describe, expect, it } from 'vitest';
 import { sql } from 'kysely';
 import { createKyselyClient } from './connection.js';
 import { ledgerQueries, onboardingQueries } from './queries.js';
 
-dotenv.config({ path: resolve(process.cwd(), '../../.env') });
-
-const databaseUrl = process.env.DATABASE_URL || process.env.DIRECT_DATABASE_URL;
+const databaseUrl = process.env.SPARKTRACK_TEST_DATABASE_URL;
+if (databaseUrl && !['localhost', '127.0.0.1', '::1', '[::1]'].includes(new URL(databaseUrl).hostname)) {
+  throw new Error('SPARKTRACK_TEST_DATABASE_URL must target a local disposable database.');
+}
 const db = databaseUrl ? createKyselyClient(databaseUrl) : null;
 
 describe('cryptographic ledger immutability', () => {
@@ -61,4 +60,3 @@ describe('cryptographic ledger immutability', () => {
     30_000,
   );
 });
-

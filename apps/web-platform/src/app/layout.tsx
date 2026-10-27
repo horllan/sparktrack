@@ -4,6 +4,7 @@ import { Providers } from './providers';
 import { Navbar } from '../components/navbar';
 import { Footer } from '../components/footer';
 import { SparkChatbot } from '../components/spark-chatbot';
+import { PwaRegistrar } from '../components/pwa-registrar';
 
 export const metadata: Metadata = {
   title: 'SparkTrack — Explore what you can do',
@@ -17,6 +18,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body className="flex min-h-screen flex-col pb-16 md:pb-0">
         <Providers>
+          <PwaRegistrar />
           <Navbar />
           <div className="flex-1">{children}</div>
           <Footer />

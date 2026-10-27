@@ -1,5 +1,13 @@
+import { ForbiddenException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import type { Kysely } from 'kysely';
 import { describe, expect, it } from 'vitest';
+import type { SparkTrackDatabase } from '@sparktrack/db';
+import { LearnerAccessService } from '../../common/auth/auth.guard';
+import type { AuthUser } from '../../common/auth/auth.guard';
+import { AuthPlatformService } from './auth-platform.service';
 import { AcceptInvitationSchema, RegisterRoleSchema } from './auth.module';
+import { TermiiSmsService } from './termii-sms.service';
 
 describe('Public role registration validation', () => {
   it('allows parent registration but requires approval for privileged roles', () => {
@@ -28,4 +36,21 @@ describe('Public role registration validation', () => {
       }).success,
     ).toBe(true);
   });
+});
+
+describe('Managed learner listing authorization', () => {
+  const service = new AuthPlatformService(
+    {} as Kysely<SparkTrackDatabase>,
+    {} as ConfigService,
+    {} as TermiiSmsService,
+    {} as LearnerAccessService,
+  );
+
+  it.each(['SCHOOL_ADMIN', 'ORG_PARTNER'] as const)(
+    'rejects %s accounts without an organisation',
+    async (role) => {
+      const user: AuthUser = { id: 'user-id', role, organisationId: null };
+      await expect(service.listManagedLearners(user)).rejects.toBeInstanceOf(ForbiddenException);
+    },
+  );
 });

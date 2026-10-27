@@ -52,6 +52,13 @@ jobs:
           DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
         run: pnpm db:migrate
 
+      - name: Run Stage 3 sandbox verification gate
+        if: ${{ env.DATABASE_URL != '' }}
+        env:
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+          SPARKTRACK_STAGE: staging
+        run: pnpm stage:verify
+
       - name: Verify staging API health & cryptographic ledger integrity
         if: ${{ vars.STAGING_API_HEALTH_URL != '' }}
         env:

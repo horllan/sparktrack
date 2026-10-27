@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0b132b"/>
+      <stop offset="100%" stop-color="#1c2541"/>
+    </linearGradient>
+    <linearGradient id="spark" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f59e0b"/>
+      <stop offset="50%" stop-color="#fbbf24"/>
+      <stop offset="100%" stop-color="#38bdf8"/>
+    </linearGradient>
+  </defs>
+  <rect width="192" height="192" rx="36" fill="url(#bg)"/>
+  <!-- Spark Track emblem: dynamic career spark & converging track arcs -->
+  <path d="M96 28 L104 74 L150 82 L104 90 L96 136 L88 90 L42 82 L88 74 Z" fill="url(#spark)"/>
+  <circle cx="96" cy="82" r="6" fill="#ffffff"/>
+  <!-- Foundation tracking pathway arcs -->
+  <path d="M48 152 Q96 122 144 152" stroke="#38bdf8" stroke-width="6" stroke-linecap="round" fill="none" opacity="0.8"/>
+  <path d="M60 166 Q96 142 132 166" stroke="#f59e0b" stroke-width="4" stroke-linecap="round" fill="none" opacity="0.6"/>
+</svg>
+

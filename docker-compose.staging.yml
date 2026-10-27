@@ -1,0 +1,109 @@
+# ==============================================================================
+# SPARKTRACK STAGE 3 (PRE-PRODUCTION STAGING SANDBOX) COMPOSE STACK
+# ==============================================================================
+# Mirrors production architecture identically while maintaining strict data
+# isolation from development and live production environments.
+# ==============================================================================
+
+name: sparktrack-staging
+
+services:
+  # Isolated Staging PostgreSQL (17 + pgvector)
+  staging-postgres:
+    image: pgvector/pgvector:pg17
+    container_name: sparktrack-staging-postgres
+    ports:
+      - '5433:5432'
+    environment:
+      POSTGRES_USER: ${STAGING_DB_USER:-sparktrack_staging_app}
+      POSTGRES_PASSWORD: ${STAGING_DB_PASSWORD:-sparktrack_staging_sandbox_secret}
+      POSTGRES_DB: ${STAGING_DB_NAME:-sparktrack_staging}
+    volumes:
+      - sparktrack_staging_pgdata:/var/lib/postgresql/data
+    networks:
+      - sparktrack_staging_net
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${STAGING_DB_USER:-sparktrack_staging_app} -d ${STAGING_DB_NAME:-sparktrack_staging}']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Isolated Staging Redis 7
+  staging-redis:
+    image: redis:7-alpine
+    container_name: sparktrack-staging-redis
+    ports:
+      - '6380:6379'
+    command: redis-server --appendonly yes --requirepass ${STAGING_REDIS_PASSWORD:-sparktrack_staging_redis_secret}
+    volumes:
+      - sparktrack_staging_redis:/data
+    networks:
+      - sparktrack_staging_net
+    healthcheck:
+      test: ['CMD', 'redis-cli', '-a', '${STAGING_REDIS_PASSWORD:-sparktrack_staging_redis_secret}', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Staging NestJS API Core
+  staging-api:
+    build:
+      context: .
+      dockerfile: apps/api-core/Dockerfile
+    container_name: sparktrack-staging-api
+    ports:
+      - '4001:4000'
+    environment:
+      NODE_ENV: staging
+      SPARKTRACK_STAGE: staging
+      PORT: 4000
+      CORS_ORIGIN: ${STAGING_CORS_ORIGIN:-http://localhost:3001}
+      DATABASE_URL: postgresql://${STAGING_DB_USER:-sparktrack_staging_app}:${STAGING_DB_PASSWORD:-sparktrack_staging_sandbox_secret}@staging-postgres:5432/${STAGING_DB_NAME:-sparktrack_staging}
+      DIRECT_DATABASE_URL: postgresql://${STAGING_DB_USER:-sparktrack_staging_app}:${STAGING_DB_PASSWORD:-sparktrack_staging_sandbox_secret}@staging-postgres:5432/${STAGING_DB_NAME:-sparktrack_staging}
+      REDIS_URL: redis://:${STAGING_REDIS_PASSWORD:-sparktrack_staging_redis_secret}@staging-redis:6379
+      SUPABASE_JWT_SECRET: ${STAGING_SUPABASE_JWT_SECRET:-staging_bootstrap_jwt_secret_min_32_bytes_len}
+      CONSENT_OTP_SECRET: ${STAGING_CONSENT_OTP_SECRET:-staging_consent_hmac_secret_32_bytes_minimum}
+      ADMIN_REGISTRATION_SECRET: ${STAGING_ADMIN_SECRET:-staging_admin_bootstrap_secret_32_bytes_min}
+    depends_on:
+      staging-postgres:
+        condition: service_healthy
+      staging-redis:
+        condition: service_healthy
+    networks:
+      - sparktrack_staging_net
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://localhost:4000/api/health || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # Staging Next.js Web Platform
+  staging-web:
+    build:
+      context: .
+      dockerfile: apps/web-platform/Dockerfile
+    container_name: sparktrack-staging-web
+    ports:
+      - '3001:3000'
+    environment:
+      NODE_ENV: staging
+      SPARKTRACK_STAGE: staging
+      PORT: 3000
+      NEXT_PUBLIC_API_URL: http://localhost:4001/api
+      NEXT_PUBLIC_SUPABASE_URL: ${STAGING_SUPABASE_URL:-http://localhost:54321}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${STAGING_SUPABASE_ANON_KEY:-staging_anon_placeholder_key}
+    depends_on:
+      staging-api:
+        condition: service_healthy
+    networks:
+      - sparktrack_staging_net
+
+networks:
+  sparktrack_staging_net:
+    driver: bridge
+
+volumes:
+  sparktrack_staging_pgdata:
+  sparktrack_staging_redis:
+

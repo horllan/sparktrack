@@ -3,7 +3,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { sql, type Kysely } from 'kysely';
 import type { SparkTrackDatabase } from './kysely-types.js';
 
-type Db = Kysely<SparkTrackDatabase>;
+export type Db = Kysely<SparkTrackDatabase>;
 export type Progression = 'BEGINNER' | 'DEVELOPING' | 'COMPETENT' | 'ADVANCED';
 
 /** Deterministic JSON (sorted keys) so the ledger hash is stable across clients/servers. */
