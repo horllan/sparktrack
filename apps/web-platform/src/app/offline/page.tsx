@@ -61,93 +61,93 @@ export default function OfflinePage() {
           <WifiOff className="w-8 h-8" />
         </div>
 
-        <h1 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight">
-          You are currently offline
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900 md:text-3xl">
+          You are offline right now
         </h1>
-        <p className="mt-3 text-slate-600 leading-relaxed text-sm md:text-base">
-          SparkTrack is engineered for low-bandwidth and intermittent Nigerian internet connections.
-          Your local app shell is active, and offline changes remain safe in your local browser storage.
+        <p className="mt-3 text-sm leading-relaxed text-slate-600 md:text-base">
+          SparkTrack works even when your internet connection drops. Any projects or feedback you save stay safe on this
+          device and sync automatically once you are back online.
         </p>
 
         {/* Sync Status Card */}
-        <div className="mt-6 p-4 rounded-xl bg-slate-50 border border-slate-200 text-left">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+        <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-4 text-left">
+          <div className="flex items-center justify-between border-b border-slate-200 pb-3">
             <div className="flex items-center gap-2">
-              <Database className="w-4 h-4 text-blue-600" />
+              <Database className="h-4 w-4 text-blue-600" />
               <span className="text-xs font-semibold uppercase tracking-wider text-slate-700">
-                IndexedDB Local Queue
+                Saved on This Device
               </span>
             </div>
             <span
-              className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+              className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
                 isOnline
                   ? 'bg-emerald-100 text-emerald-800'
                   : 'bg-amber-100 text-amber-800'
               }`}
             >
-              {isOnline ? 'Online (Ready to sync)' : 'Offline mode'}
+              {isOnline ? 'Online (Ready to sync)' : 'Offline'}
             </span>
           </div>
 
           <div className="mt-3 grid grid-cols-2 gap-3 text-center">
-            <div className="p-3 bg-white rounded-lg border border-slate-200">
+            <div className="rounded-lg border border-slate-200 bg-white p-3">
               <div className="text-xl font-bold text-slate-900">{pendingArtifactsCount}</div>
-              <div className="text-xs text-slate-500 mt-0.5">Pending Evidence</div>
+              <div className="mt-0.5 text-xs text-slate-500">Saved Projects</div>
             </div>
-            <div className="p-3 bg-white rounded-lg border border-slate-200">
+            <div className="rounded-lg border border-slate-200 bg-white p-3">
               <div className="text-xl font-bold text-slate-900">{pendingRubricsCount}</div>
-              <div className="text-xs text-slate-500 mt-0.5">Pending Rubrics</div>
+              <div className="mt-0.5 text-xs text-slate-500">Saved Reviews</div>
             </div>
           </div>
-          <p className="mt-3 text-xs text-slate-500 flex items-center gap-1.5">
-            <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-            Queued submissions are hashed with SHA-256 and will sync automatically when connection returns.
+          <p className="mt-3 flex items-center gap-1.5 text-xs text-slate-500">
+            <ShieldCheck className="h-4 w-4 shrink-0 text-emerald-600" />
+            Your saved items will sync automatically as soon as your connection returns.
           </p>
         </div>
 
         {/* Actions */}
-        <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
+        <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
           <button
             onClick={handleRetry}
             disabled={isRetrying}
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm transition-colors shadow-sm disabled:opacity-50 cursor-pointer"
+            className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 py-3 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-700 disabled:opacity-50 sm:w-auto"
           >
-            <RefreshCw className={`w-4 h-4 ${isRetrying ? 'animate-spin' : ''}`} />
-            {isRetrying ? 'Checking connection...' : 'Retry Connection'}
+            <RefreshCw className={`h-4 w-4 ${isRetrying ? 'animate-spin' : ''}`} />
+            {isRetrying ? 'Checking connection...' : 'Try Again'}
           </button>
           <Link
             href="/"
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-sm transition-colors"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-slate-100 px-6 py-3 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-200 sm:w-auto"
           >
-            Return to Homepage
+            Back to Home
           </Link>
         </div>
 
-        {/* Precached Navigation Shortcuts */}
-        <div className="mt-8 pt-6 border-t border-slate-100 text-left">
+        {/* Navigation Shortcuts */}
+        <div className="mt-8 border-t border-slate-100 pt-6 text-left">
           <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-            Available Cached Shells
+            Quick Links
           </span>
-          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
             <Link
               href="/student/dashboard"
-              className="flex items-center justify-between p-3 rounded-lg border border-slate-200 hover:border-blue-400 hover:bg-blue-50/50 transition-colors group"
+              className="group flex items-center justify-between rounded-lg border border-slate-200 p-3 transition-colors hover:border-blue-400 hover:bg-blue-50/50"
             >
               <div className="flex items-center gap-2">
-                <FolderKanban className="w-4 h-4 text-blue-600" />
-                <span className="text-sm font-medium text-slate-800">Student Portal</span>
+                <FolderKanban className="h-4 w-4 text-blue-600" />
+                <span className="text-sm font-medium text-slate-800">Student Workspace</span>
               </div>
-              <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-600 transition-colors" />
+              <ArrowRight className="h-3.5 w-3.5 text-slate-400 transition-colors group-hover:text-blue-600" />
             </Link>
             <Link
               href="/mentor/dashboard"
-              className="flex items-center justify-between p-3 rounded-lg border border-slate-200 hover:border-blue-400 hover:bg-blue-50/50 transition-colors group"
+              className="group flex items-center justify-between rounded-lg border border-slate-200 p-3 transition-colors hover:border-blue-400 hover:bg-blue-50/50"
             >
               <div className="flex items-center gap-2">
-                <UserCheck className="w-4 h-4 text-blue-600" />
-                <span className="text-sm font-medium text-slate-800">Mentor Portal</span>
+                <UserCheck className="h-4 w-4 text-blue-600" />
+                <span className="text-sm font-medium text-slate-800">Mentor Workspace</span>
               </div>
-              <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-600 transition-colors" />
+              <ArrowRight className="h-3.5 w-3.5 text-slate-400 transition-colors group-hover:text-blue-600" />
             </Link>
           </div>
         </div>

@@ -18,6 +18,7 @@ import {
   Compass,
   FolderKanban,
   Input,
+  PlayCircle,
   ShieldCheck,
   Sparkles,
 } from '@sparktrack/ui';
@@ -37,12 +38,42 @@ interface SkillNode {
 interface LearnerSummary {
   learnerId: string;
   fullName: string;
+  ageGroup: 'UNDER_18' | 'ADULT';
   educationStage: string;
+  learnerStage: string;
+  educationLevel: string | null;
+  learningGoal: string;
+  currentRole: string | null;
+  targetRole: string | null;
+  whatsappOptIn: boolean;
   consentStatus: string;
   declaredInterests: string[];
   totalArtifacts: number;
   lastEvidenceDate: string | null;
 }
+
+const STAGE_LABELS: Record<string, string> = {
+  SECONDARY_SCHOOL: 'Secondary school',
+  UNIVERSITY: 'University / college',
+  NYSC: 'NYSC',
+  EMPLOYED: 'Working',
+  CAREER_TRANSITION: 'Career transition',
+  CAREER_GROWTH: 'Career growth',
+  SELF_TAUGHT: 'Independent learning',
+  NO_FORMAL_EDUCATION: 'Learning outside formal education',
+  OTHER: 'Learning journey',
+};
+const GOAL_LABELS: Record<string, string> = {
+  EXPLORE_INTERESTS: 'Explore interests',
+  BUILD_PRACTICAL_SKILLS: 'Build practical skills',
+  GET_FIRST_JOB: 'Prepare for a first job',
+  CHANGE_CAREER: 'Change careers',
+  GROW_IN_CAREER: 'Grow in a career',
+  START_BUSINESS: 'Start a business',
+  RETURN_TO_EDUCATION: 'Return to education',
+  PERSONAL_GROWTH: 'Personal growth',
+  OTHER: 'A personal goal',
+};
 
 interface SealedArtifact {
   id: string;
@@ -107,6 +138,9 @@ export default function StudentDashboardPage() {
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  const [whatsappOptIn, setWhatsappOptIn] = useState(false);
+  const [whatsappPhone, setWhatsappPhone] = useState('');
+  const [savingWhatsAppPreference, setSavingWhatsAppPreference] = useState(false);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
 
@@ -147,7 +181,11 @@ export default function StudentDashboardPage() {
       fetch(`${API_URL}/v1/pathways/${uid}/affinities`, { headers }).catch(() => null),
     ]);
 
-    if (sumRes?.ok) setSummary((await sumRes.json()) as LearnerSummary);
+    if (sumRes?.ok) {
+      const nextSummary = (await sumRes.json()) as LearnerSummary;
+      setSummary(nextSummary);
+      setWhatsappOptIn(nextSummary.whatsappOptIn);
+    }
     if (artRes?.ok) setArtifacts((await artRes.json()) as SealedArtifact[]);
     if (scoreRes?.ok) {
       const s = (await scoreRes.json()) as { scores: ComputedSkillScore[] };
@@ -155,6 +193,40 @@ export default function StudentDashboardPage() {
     }
     if (pathRes?.ok) setPathways((await pathRes.json()) as PathwayAffinityItem[]);
   }, [syncEngine]);
+
+  async function saveWhatsAppPreference() {
+    if (!userId) return;
+    setSavingWhatsAppPreference(true);
+    setError('');
+    setNotice('');
+    try {
+      const { data } = await createClient().auth.getSession();
+      const token = data.session?.access_token;
+      if (!token) throw new Error('Sign in again to update your messaging preference.');
+      const response = await fetch(`${API_URL}/v1/learning/learners/${userId}/whatsapp-preference`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          optIn: whatsappOptIn,
+          ...(whatsappOptIn ? { phoneNumber: whatsappPhone.trim() } : {}),
+        }),
+      });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as { message?: string } | null;
+        throw new Error(body?.message ?? 'Could not update your WhatsApp preference.');
+      }
+      setSummary((current) => (current ? { ...current, whatsappOptIn } : current));
+      setNotice(
+        whatsappOptIn
+          ? 'Preference saved. You will be asked to confirm before SparkTrack sends WhatsApp messages.'
+          : 'WhatsApp reminders are turned off.',
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not update your WhatsApp preference.');
+    } finally {
+      setSavingWhatsAppPreference(false);
+    }
+  }
 
   useEffect(() => {
     void refreshDashboard();
@@ -211,15 +283,17 @@ export default function StudentDashboardPage() {
               });
             } catch {
               throw new Error(
-                'Attachment upload was blocked or unavailable. Verify that the R2 CORS policy allows this origin, PUT, and Content-Type. Your project was not submitted.',
+                'Could not upload your attachment right now. Please check your connection and try again.',
               );
             }
             if (!uploadRes.ok) {
-              throw new Error(`Attachment upload failed (HTTP ${uploadRes.status}). Your project was not submitted.`);
+              throw new Error('Could not upload your file. Please try again.');
             }
             storageR2Keys.push(ticket.r2Key);
           } else {
-            throw new Error(`Could not prepare the attachment upload (HTTP ${presignRes.status}). Your project was not submitted.`);
+            throw new Error(
+              'Could not prepare the file upload. Please try again in a moment.',
+            );
           }
         } else {
           throw new Error('Sign in again before uploading your attachment.');
@@ -274,7 +348,9 @@ export default function StudentDashboardPage() {
       } else if (res.skippedNoAuth) {
         setError('Please sign in so your saved device items can sync to your learner space.');
       } else if (res.failedCount > 0) {
-        setError(`Could not sync right now (${res.lastError ?? 'connection issue'}). Your work remains safely saved on this device.`);
+        setError(
+          `Could not sync right now (${res.lastError ?? 'connection issue'}). Your work remains safely saved on this device.`,
+        );
       } else {
         setNotice('Everything on this device is already up to date.');
       }
@@ -318,17 +394,25 @@ export default function StudentDashboardPage() {
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
               {summary
-                ? `${summary.educationStage} · Exploring ${summary.declaredInterests.join(', ') || 'new interests'}`
-                : 'Sign in or complete onboarding to set up your learner space and start capturing your projects.'}
+                ? `${STAGE_LABELS[summary.learnerStage] ?? 'Your learning journey'}${summary.educationLevel ? ` · ${summary.educationLevel}` : ''} · ${GOAL_LABELS[summary.learningGoal] ?? 'Building your next step'}`
+                : 'From JSS1 onwards, university, NYSC, work, career changes, or learning outside school—build skills and proof at your own pace.'}
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
             {!userId && (
-              <Link href="/student/onboarding" className="inline-flex">
-                <span className="inline-flex h-12 items-center justify-center rounded-xl bg-spark-600 px-5 text-sm font-semibold text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-spark-800">
-                  Create your learner space <ArrowRight size={17} className="ml-2" aria-hidden="true" />
-                </span>
-              </Link>
+              <>
+                <Link href="/demo?role=student" className="inline-flex">
+                  <span className="inline-flex h-12 items-center justify-center rounded-xl border border-spark-200 bg-spark-50 px-5 text-sm font-bold text-spark-800 transition-all hover:bg-spark-100">
+                    <PlayCircle size={17} className="mr-2" aria-hidden="true" />
+                    Explore Interactive Demo
+                  </span>
+                </Link>
+                <Link href="/student/onboarding" className="inline-flex">
+                  <span className="inline-flex h-12 items-center justify-center rounded-xl bg-spark-600 px-5 text-sm font-semibold text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-spark-800">
+                    Create your learner space <ArrowRight size={17} className="ml-2" aria-hidden="true" />
+                  </span>
+                </Link>
+              </>
             )}
             {userId && summary?.consentStatus === 'VERIFIED_ACTIVE' && (
               <a
@@ -341,8 +425,19 @@ export default function StudentDashboardPage() {
           </div>
         </div>
 
-        {error && <p role="alert" className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-800">{error}</p>}
-        {notice && <p role="status" className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-medium text-emerald-900">{notice}</p>}
+        {error && (
+          <p role="alert" className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-800">
+            {error}
+          </p>
+        )}
+        {notice && (
+          <p
+            role="status"
+            className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-medium text-emerald-900"
+          >
+            {notice}
+          </p>
+        )}
 
         <div className="spark-stagger grid gap-6 md:grid-cols-3">
           <Card className="overflow-hidden">
@@ -383,14 +478,20 @@ export default function StudentDashboardPage() {
                 </span>
                 <Badge variant={summary?.consentStatus === 'VERIFIED_ACTIVE' ? 'competent' : 'developing'}>
                   {summary?.consentStatus === 'VERIFIED_ACTIVE'
-                    ? 'Guardian Verified'
+                    ? summary.ageGroup === 'ADULT'
+                      ? 'Self-managed'
+                      : 'Guardian Verified'
                     : summary?.consentStatus === 'PENDING_PARENTAL_CONSENT'
                       ? 'Awaiting Guardian'
                       : 'Setup Needed'}
                 </Badge>
               </div>
-              <CardTitle className="mt-3 text-base">Family permission</CardTitle>
-              <CardDescription>Your guardian’s consent keeps your learning space safe and private.</CardDescription>
+              <CardTitle className="mt-3 text-base">Privacy &amp; permissions</CardTitle>
+              <CardDescription>
+                {summary?.ageGroup === 'ADULT'
+                  ? 'You manage your profile and sharing preferences.'
+                  : 'A parent or guardian controls permissions for learners under 18.'}
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
               <div className="flex items-center justify-between rounded-xl bg-slate-50 px-3.5 py-2.5">
@@ -398,12 +499,60 @@ export default function StudentDashboardPage() {
                 <span className="font-bold text-slate-900">{summary?.totalArtifacts ?? artifacts.length}</span>
               </div>
               {summary && summary.consentStatus !== 'VERIFIED_ACTIVE' && (
-                <Button size="sm" variant="outline" className="w-full" disabled={busy} onClick={() => void resendConsent()}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full"
+                  disabled={busy}
+                  onClick={() => void resendConsent()}
+                >
                   Resend Guardian Consent SMS
                 </Button>
               )}
             </CardContent>
           </Card>
+
+          {summary?.ageGroup === 'ADULT' && (
+            <Card>
+              <CardHeader>
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700">
+                  <Activity size={19} aria-hidden="true" />
+                </div>
+                <CardTitle className="mt-3 text-base">Stay in your flow</CardTitle>
+                <CardDescription>
+                  Choose where you would prefer SparkTrack reminders. You will confirm before messages begin.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                <label className="flex items-start gap-3 text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={whatsappOptIn}
+                    onChange={(event) => setWhatsappOptIn(event.target.checked)}
+                    className="mt-1"
+                  />
+                  <span>WhatsApp is my preferred channel for learning reminders.</span>
+                </label>
+                {whatsappOptIn && (
+                  <Input
+                    value={whatsappPhone}
+                    onChange={(event) => setWhatsappPhone(event.target.value)}
+                    type="tel"
+                    placeholder="WhatsApp number (+234…)"
+                  />
+                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full"
+                  disabled={savingWhatsAppPreference || (whatsappOptIn && whatsappPhone.trim().length < 8)}
+                  onClick={() => void saveWhatsAppPreference()}
+                >
+                  {savingWhatsAppPreference ? 'Saving…' : 'Save preference'}
+                </Button>
+              </CardContent>
+            </Card>
+          )}
 
           <Card>
             <CardHeader>
@@ -423,8 +572,14 @@ export default function StudentDashboardPage() {
                 skillScores.slice(0, 5).map((s) => (
                   <div key={s.code} className="space-y-1">
                     <div className="flex items-center justify-between">
-                      <span className="truncate pr-2 font-medium text-slate-800">{formatSkillCode(s.code, catalogue)}</span>
-                      <Badge variant={s.progression.toLowerCase() as 'beginner' | 'developing' | 'competent' | 'advanced'}>
+                      <span className="truncate pr-2 font-medium text-slate-800">
+                        {formatSkillCode(s.code, catalogue)}
+                      </span>
+                      <Badge
+                        variant={
+                          s.progression.toLowerCase() as 'beginner' | 'developing' | 'competent' | 'advanced'
+                        }
+                      >
                         {s.progression} ({Math.round(s.score * 100)}%)
                       </Badge>
                     </div>
@@ -492,7 +647,11 @@ export default function StudentDashboardPage() {
             <CardContent className="space-y-4">
               <label className="block space-y-1.5 text-sm font-semibold text-slate-800">
                 What did you work on?
-                <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Give your project or activity a name" />
+                <Input
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="Give your project or activity a name"
+                />
               </label>
               <label className="block space-y-1.5 text-sm font-semibold text-slate-800">
                 Type of work
@@ -500,10 +659,12 @@ export default function StudentDashboardPage() {
                   aria-label="Artifact type"
                   value={artifactType}
                   onChange={(e) => setArtifactType(e.target.value as ArtifactType)}
-                  className="w-full"
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"
                 >
                   {ARTIFACT_TYPES.map((t) => (
-                    <option key={t.value} value={t.value}>{t.label}</option>
+                    <option key={t.value} value={t.value}>
+                      {t.label}
+                    </option>
                   ))}
                 </select>
               </label>
@@ -519,11 +680,17 @@ export default function StudentDashboardPage() {
               </label>
               <label className="block space-y-1.5 text-sm font-semibold text-slate-800">
                 Link to your work <span className="font-normal text-slate-500">(optional)</span>
-                <Input value={externalUrl} onChange={(e) => setExternalUrl(e.target.value)} type="url" placeholder="Paste a link to a project, design, or video" />
+                <Input
+                  value={externalUrl}
+                  onChange={(e) => setExternalUrl(e.target.value)}
+                  type="url"
+                  placeholder="Paste a link to a project, design, or video"
+                />
               </label>
 
               <label className="block space-y-1.5 text-sm font-semibold text-slate-800">
-                Upload project file to Cloudflare R2 <span className="font-normal text-slate-500">(optional — photo, PDF, or zip)</span>
+                Attach a file{' '}
+                <span className="font-normal text-slate-500">(optional — image, PDF, or zip)</span>
                 <Input
                   type="file"
                   accept="image/*,.pdf,.zip,.mp4,.mp3"
@@ -532,7 +699,7 @@ export default function StudentDashboardPage() {
                 />
                 {attachmentFile && (
                   <span className="block text-xs font-normal text-spark-700">
-                    Selected for R2 upload: {attachmentFile.name} ({Math.round(attachmentFile.size / 1024)} KB)
+                    Selected file: {attachmentFile.name} ({Math.round(attachmentFile.size / 1024)} KB)
                   </span>
                 )}
               </label>
@@ -597,15 +764,17 @@ export default function StudentDashboardPage() {
                     </Badge>
                   </div>
                   {local.description && <p className="text-xs text-slate-600">{local.description}</p>}
-                  {local.lastError && (
-                    <p className="text-xs text-amber-900">Last sync note: {local.lastError}</p>
-                  )}
+                  {local.lastError && <p className="text-xs text-amber-900">Last sync note: {local.lastError}</p>}
                 </div>
               ))}
 
               {artifacts.length === 0 && queuedLocal.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center text-sm text-slate-500">
-                  No projects in your collection yet. Add your first project on the left to begin!
+                  No projects in your collection yet. Add your first project on the left to begin (or explore the{' '}
+                  <Link href="/demo?role=student" className="font-bold text-spark-700 underline">
+                    Interactive Product Demo
+                  </Link>
+                  )!
                 </div>
               ) : (
                 artifacts.map((art) => (

@@ -41,10 +41,10 @@ const ROLE_OPTIONS: Array<{
   {
     id: 'PARENT',
     title: 'Parent or Guardian',
-    subtitle: 'Register yourself, then add your JSS / SSS child',
-    badge: 'Recommended for JSS1–SS3',
+    subtitle: 'Support a learner under 18 and manage privacy',
+    badge: 'Family Hub',
     description:
-      'Parents and guardians register first to create a safe family account, add one or more children, and control NDPA privacy settings.',
+      'Create a family account, add one or more children, approve their profiles, and view their progress reports.',
     icon: HeartHandshake,
     accent: 'border-coral-500/40 bg-coral-50/60 text-coral-600',
     destination: '/parent/dashboard',
@@ -52,10 +52,10 @@ const ROLE_OPTIONS: Array<{
   {
     id: 'SCHOOL_ADMIN',
     title: 'School or Organisation',
-    subtitle: 'Schools, NGOs, camps & training partners',
-    badge: 'Institutional Portal',
+    subtitle: 'Schools, youth programmes, and training hubs',
+    badge: 'School Portal',
     description:
-      'Onboard your school or youth programme, register students with guardian contacts, and track cohort skill progression.',
+      'Register your school or programme, add students with parent contact details, and track progress across cohorts.',
     icon: Building2,
     accent: 'border-violet-500/40 bg-violet-50/60 text-violet-700',
     destination: '/school/dashboard',
@@ -63,21 +63,21 @@ const ROLE_OPTIONS: Array<{
   {
     id: 'MENTOR',
     title: 'Mentor or Educator',
-    subtitle: 'Teachers, coaches & industry verifiers',
-    badge: 'Evidence Verifier',
+    subtitle: 'Teachers, coaches, and project reviewers',
+    badge: 'Mentor Space',
     description:
-      'Review student project submissions, score rubric quality, and log 1–4 behavioural signal observations.',
+      'Review student projects, give quick constructive feedback, and highlight practical problem-solving strengths.',
     icon: UsersRound,
     accent: 'border-emerald-500/40 bg-emerald-50/60 text-emerald-700',
     destination: '/mentor/dashboard',
   },
   {
     id: 'LEARNER',
-    title: 'Student / Learner',
-    subtitle: 'Access your learning hub or teen onboarding',
-    badge: 'Explorer Space',
+    title: 'Student or Learner',
+    subtitle: 'Log projects and track your growing skills',
+    badge: 'Learner Space',
     description:
-      'Junior and Secondary students registered by a parent or school can sign in here, or older teens can start self-onboarding.',
+      'For learners from JSS1 through university, NYSC, and career growth. Learners under 18 link a parent or guardian.',
     icon: Compass,
     accent: 'border-spark-500/40 bg-spark-50/60 text-spark-700',
     destination: '/student/dashboard',
@@ -133,7 +133,7 @@ function AuthHubContent() {
       }
       if (mode === 'signup' && selectedRole !== 'PARENT' && !invitationToken.trim()) {
         throw new Error(
-          'School, partner, and mentor accounts require a signed Staff Invitation Token (SPK-INV...). Enter your token below or request one via Contact & Support.',
+          'School, partner, and mentor accounts require an invitation code. Enter your code below or request one from our team.',
         );
       }
 
@@ -254,9 +254,9 @@ function AuthHubContent() {
               {mode === 'signup' ? 'Choose how you are joining SparkTrack.' : 'Welcome back to SparkTrack.'}
             </h1>
             <p className="max-w-2xl text-sm leading-6 text-slate-600">
-              Junior and Secondary school students (<span className="font-semibold text-slate-800">JSS1–SS3</span>) are
-              registered by a <span className="font-semibold text-slate-800">Parent/Guardian</span> or{' '}
-              <span className="font-semibold text-slate-800">School</span> first to guarantee NDPA child safety.
+              SparkTrack is for learners from <span className="font-semibold text-slate-800">JSS1 onwards</span>—at school,
+              university, NYSC, work, career transitions, and outside formal education. Under-18 learners need{' '}
+              <span className="font-semibold text-slate-800">guardian consent</span>; adults can create their own learner space.
             </p>
           </div>
 
@@ -340,19 +340,18 @@ function AuthHubContent() {
             </div>
 
             {/* Helpful Parent/School Registration Guidance Box */}
-            <div className="rounded-2xl border border-blue-200/80 bg-blue-50/70 p-4 text-xs leading-5 text-blue-950">
+            <div className="rounded-2xl border border-blue-200/80 bg-blue-50/70 p-4 text-xs leading-relaxed text-blue-950">
               <div className="flex items-start gap-3">
                 <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-spark-600" />
                 <div>
                   <p className="font-bold text-slate-900">
-                    How Junior &amp; Senior Secondary (JSS1–SS3) Registration Works
+                    Registering a learner under 18
                   </p>
                   <p className="mt-1 text-slate-700">
-                    1. <strong>Parent/Guardian</strong> or <strong>School</strong> creates an account here first.
+                    1. A <strong>parent</strong> or <strong>school</strong> creates an account here first.
                     <br />
-                    2. Inside your dashboard, click <strong>&ldquo;Add Child / Student&rdquo;</strong> to create the
-                    student’s profile, choose their interests, and receive their unique{' '}
-                    <code className="rounded bg-white px-1.5 py-0.5 font-mono text-[11px]">SPK-XXXX</code> Learner ID.
+                    2. In your dashboard, click <strong>Add Learner</strong> to set up their profile and get their
+                    student access code.
                   </p>
                 </div>
               </div>
@@ -389,11 +388,11 @@ function AuthHubContent() {
 
               {mode === 'signup' && selectedRole === 'LEARNER' ? (
                 <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-                  <p className="font-semibold text-slate-900">Are you in Junior or Senior Secondary School (JSS1–SS3)?</p>
+                  <p className="font-semibold text-slate-900">Every learner can start here—from JSS1 onwards.</p>
                   <p className="text-xs leading-5 text-slate-600">
-                    Ask your <strong>Parent/Guardian</strong> or <strong>School</strong> to register you from their
-                    account first. If you are 16+ or ready to invite your parent via SMS consent right now, you can use
-                    the guided Student Onboarding wizard.
+                    University, NYSC, employed, changing careers, growing in a role, self-taught, and no-formal-education
+                    learners can create their own space. If you are under 18, invite a parent or guardian to approve your
+                    learning profile before evidence is collected.
                   </p>
                   <div className="flex flex-col gap-2.5 sm:flex-row">
                     <Button
@@ -406,7 +405,7 @@ function AuthHubContent() {
                     </Button>
                     <Link href="/student/onboarding" className="flex-1">
                       <Button type="button" className="w-full">
-                        Continue Teen Onboarding <ArrowRight className="ml-1.5 h-4 w-4" />
+                        Continue Learner Onboarding <ArrowRight className="ml-1.5 h-4 w-4" />
                       </Button>
                     </Link>
                   </div>
@@ -471,23 +470,23 @@ function AuthHubContent() {
                         <div className="space-y-1.5 rounded-2xl border border-violet-200/80 bg-violet-50/50 p-3.5">
                           <div className="flex items-center justify-between gap-2">
                             <label className="text-xs font-bold text-slate-900">
-                              Staff Invitation Token (Required)
+                              Invitation Code (Required)
                             </label>
                             <Link
                               href="/contact"
                               className="text-[11px] font-semibold text-spark-700 underline hover:text-spark-800"
                             >
-                              Request an Invitation →
+                              Request a code →
                             </Link>
                           </div>
                           <Input
                             value={invitationToken}
                             onChange={(e) => setInvitationToken(e.target.value)}
-                            placeholder="SPK-INV.SCHOOL_ADMIN.1799..."
-                            className="bg-white font-mono text-xs"
+                            placeholder="Enter your school or mentor invitation code"
+                            className="bg-white text-xs"
                           />
-                          <p className="text-[11px] leading-4 text-slate-600">
-                            Institutional and mentor roles are protected by signed staff invitations to prevent unauthorized access to learner cohorts.
+                          <p className="text-[11px] leading-relaxed text-slate-600">
+                            School and mentor accounts require an invitation code to protect student privacy.
                           </p>
                         </div>
                       )}
@@ -555,22 +554,24 @@ function AuthHubContent() {
                 </>
               )}
 
-              {/* Quick Demo Explorer Bar */}
-              <div className="border-t border-slate-100 pt-4">
-                <p className="text-xs font-semibold text-slate-500">Exploring the live demo environment?</p>
-                <div className="mt-2 flex flex-wrap gap-2">
+              {/* Quick Links */}
+              <div className="space-y-2.5 border-t border-slate-100 pt-4">
+                <p className="text-xs font-semibold text-slate-600">
+                  Want to explore SparkTrack before creating an account?
+                </p>
+                <div className="flex flex-wrap gap-2">
                   <Link
-                    href={activeRoleMeta.destination}
-                    className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                    href="/demo"
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-spark-200 bg-spark-50 px-3.5 py-2 text-xs font-bold text-spark-800 transition hover:bg-spark-100"
                   >
-                    <span>Preview {activeRoleMeta.title} Workspace</span>
+                    <span>Open Interactive Demo</span>
                     <ArrowRight className="h-3.5 w-3.5" />
                   </Link>
                   <Link
                     href="/parent/consent"
-                    className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
                   >
-                    <span>Enter Guardian SMS Code</span>
+                    <span>Enter Parent SMS Code</span>
                   </Link>
                 </div>
               </div>

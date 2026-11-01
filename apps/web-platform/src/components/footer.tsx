@@ -14,16 +14,16 @@ export function Footer() {
               </span>
               <span className="text-lg font-extrabold tracking-tight text-white">sparktrack</span>
             </Link>
-            <p className="max-w-sm text-sm leading-6 text-slate-400">
-              Longitudinal Youth Capability &amp; Future Pathways Intelligence. Built in Nigeria for Africa and the
-              world—helping Junior and Senior Secondary learners turn real projects into verified skills.
+            <p className="max-w-sm text-sm leading-relaxed text-slate-400">
+              Helping young people and adult learners turn real projects into verified skills, mentor feedback, and
+              clear next steps.
             </p>
             <div className="flex flex-wrap gap-2 pt-1 text-xs font-medium text-cyan-300">
               <span className="inline-flex items-center gap-1.5 rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1">
-                <ShieldCheck className="h-3.5 w-3.5" /> NDPA 2023 • POPIA • GDPR
+                <ShieldCheck className="h-3.5 w-3.5" /> Child Privacy Protected
               </span>
               <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-400/20 bg-blue-400/10 px-3 py-1">
-                <Compass className="h-3.5 w-3.5" /> Evidence Over Labels
+                <Compass className="h-3.5 w-3.5" /> Real Work Over Labels
               </span>
             </div>
           </div>
@@ -31,30 +31,30 @@ export function Footer() {
           {/* Account & Registration */}
           <div>
             <h3 className="text-xs font-bold uppercase tracking-[0.14em] text-white">Get Started</h3>
-            <ul className="mt-4 space-y-2.5 text-sm">
+            <ul className="mt-4 space-y-2.5 text-sm leading-relaxed">
               <li>
                 <Link href="/auth?mode=signup&role=PARENT" className="transition hover:text-white">
-                  Parent / Guardian Registration
+                  Parent Registration
                 </Link>
               </li>
               <li>
                 <Link href="/auth?mode=signup&role=SCHOOL_ADMIN" className="transition hover:text-white">
-                  School &amp; Partner Registration
+                  School Registration
                 </Link>
               </li>
               <li>
                 <Link href="/auth?mode=signup&role=MENTOR" className="transition hover:text-white">
-                  Mentor &amp; Educator Sign Up
+                  Join as a Mentor
                 </Link>
               </li>
               <li>
                 <Link href="/auth?mode=signin" className="transition hover:text-white">
-                  Student / Learner Sign In
+                  Sign In
                 </Link>
               </li>
               <li>
                 <Link href="/student/onboarding" className="transition hover:text-white">
-                  Teen Self-Onboarding (16+)
+                  Learner Onboarding
                 </Link>
               </li>
             </ul>
@@ -63,30 +63,30 @@ export function Footer() {
           {/* Role Workspaces */}
           <div>
             <h3 className="text-xs font-bold uppercase tracking-[0.14em] text-white">Workspaces</h3>
-            <ul className="mt-4 space-y-2.5 text-sm">
+            <ul className="mt-4 space-y-2.5 text-sm leading-relaxed">
+              <li>
+                <Link href="/demo" className="transition hover:text-white">
+                  Interactive Demo
+                </Link>
+              </li>
               <li>
                 <Link href="/parent/dashboard" className="transition hover:text-white">
-                  Parent &amp; Family Hub
+                  Family Hub
                 </Link>
               </li>
               <li>
                 <Link href="/student/dashboard" className="transition hover:text-white">
-                  Student Learning Hub
+                  Student Workspace
                 </Link>
               </li>
               <li>
                 <Link href="/mentor/dashboard" className="transition hover:text-white">
-                  Mentor Verification Studio
+                  Mentor Workspace
                 </Link>
               </li>
               <li>
                 <Link href="/school/dashboard" className="transition hover:text-white">
-                  School &amp; Partner Insights
-                </Link>
-              </li>
-              <li>
-                <Link href="/student/portfolio" className="transition hover:text-white">
-                  Public Portfolio Verifier
+                  School Overview
                 </Link>
               </li>
             </ul>
@@ -94,31 +94,31 @@ export function Footer() {
 
           {/* Support & Partnerships */}
           <div>
-            <h3 className="text-xs font-bold uppercase tracking-[0.14em] text-white">Support &amp; Contact</h3>
-            <ul className="mt-4 space-y-2.5 text-sm">
+            <h3 className="text-xs font-bold uppercase tracking-[0.14em] text-white">Support</h3>
+            <ul className="mt-4 space-y-2.5 text-sm leading-relaxed">
               <li>
                 <Link href="/contact" className="transition hover:text-white">
-                  Contact Us &amp; Support Desk
+                  Contact Support
                 </Link>
               </li>
               <li>
                 <Link href="/contact?category=SCHOOL_PARTNERSHIP" className="transition hover:text-white">
-                  School &amp; Ministry Partnerships
+                  School Partnerships
                 </Link>
               </li>
               <li>
                 <Link href="/contact?category=SCHOLARSHIP_SPONSORSHIP" className="transition hover:text-white">
-                  Sponsor Youth Scholarships
+                  Sponsor a Cohort
                 </Link>
               </li>
               <li>
                 <Link href="/contact?category=PRIVACY_DPO_REQUEST" className="transition hover:text-white">
-                  Data Protection Officer (DPO)
+                  Privacy Inquiries
                 </Link>
               </li>
               <li>
-                <Link href="/#tour" className="transition hover:text-white">
-                  Interactive Platform Tour
+                <Link href="/student/portfolio" className="transition hover:text-white">
+                  Verify a Portfolio
                 </Link>
               </li>
             </ul>
@@ -126,36 +126,36 @@ export function Footer() {
 
           {/* Legal, Privacy & Compliance */}
           <div>
-            <h3 className="text-xs font-bold uppercase tracking-[0.14em] text-white">Legal &amp; Compliance</h3>
-            <ul className="mt-4 space-y-2.5 text-sm">
+            <h3 className="text-xs font-bold uppercase tracking-[0.14em] text-white">Legal &amp; Privacy</h3>
+            <ul className="mt-4 space-y-2.5 text-sm leading-relaxed">
               <li>
                 <Link href="/legal?doc=privacy" className="transition hover:text-white">
-                  Privacy Policy (NDPA / POPIA / GDPR)
+                  Privacy Policy
                 </Link>
               </li>
               <li>
                 <Link href="/legal?doc=terms" className="transition hover:text-white">
-                  Terms of Service &amp; Acceptable Use
+                  Terms of Service
                 </Link>
               </li>
               <li>
                 <Link href="/legal?doc=child-safety" className="transition hover:text-white">
-                  Child Safety &amp; Consent Charter
+                  Child Safety Policy
                 </Link>
               </li>
               <li>
                 <Link href="/legal?doc=ai-charter" className="transition hover:text-white">
-                  AI Ethics &amp; Non-Deterministic Policy
+                  Guidance Principles
                 </Link>
               </li>
               <li>
                 <Link href="/legal?doc=dpa" className="transition hover:text-white">
-                  School Institutional DPA
+                  School Data Agreement
                 </Link>
               </li>
               <li>
                 <Link href="/legal?doc=ledger-governance" className="transition hover:text-white">
-                  SHA-256 Ledger &amp; Right to Erasure
+                  Data Deletion &amp; Records
                 </Link>
               </li>
             </ul>
@@ -163,19 +163,16 @@ export function Footer() {
         </div>
 
         <div className="mt-12 flex flex-col items-start justify-between gap-4 border-t border-white/10 pt-8 text-xs text-slate-400 sm:flex-row sm:items-center">
-          <p>
-            © {new Date().getFullYear()} SparkTrack Intelligence Platform. Compliant with Nigeria NDPA 2023, Child’s
-            Rights Act 2003, AU/POPIA, GDPR &amp; COPPA.
-          </p>
+          <p>© {new Date().getFullYear()} SparkTrack. Built with privacy and child-safety safeguards.</p>
           <div className="flex flex-wrap items-center gap-4">
             <Link href="/legal" className="inline-flex items-center gap-1 hover:text-white">
-              <Scale className="h-3.5 w-3.5 text-cyan-400" /> Legal Center
+              <Scale className="h-3.5 w-3.5 text-cyan-400" /> Privacy &amp; Terms
             </Link>
             <Link href="/contact" className="inline-flex items-center gap-1 hover:text-white">
-              <HeartHandshake className="h-3.5 w-3.5 text-coral-500" /> Contact Support
+              <HeartHandshake className="h-3.5 w-3.5 text-coral-500" /> Contact Us
             </Link>
             <Link href="/parent/consent" className="inline-flex items-center gap-1 hover:text-white">
-              <UsersRound className="h-3.5 w-3.5 text-emerald-400" /> SMS Consent Portal
+              <UsersRound className="h-3.5 w-3.5 text-emerald-400" /> Parent SMS Code
             </Link>
           </div>
         </div>

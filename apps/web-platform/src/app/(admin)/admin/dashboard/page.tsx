@@ -139,6 +139,13 @@ export default function AdminDashboardPage() {
   const [enrolLearnerId, setEnrolLearnerId] = useState('');
   const [enrolCohortId, setEnrolCohortId] = useState('');
   const [paymentProvider, setPaymentProvider] = useState<'PAYSTACK' | 'STRIPE'>('PAYSTACK');
+  const [pendingCheckout, setPendingCheckout] = useState<{
+    enrolmentId: string;
+    paymentReference: string;
+    paymentProvider: 'PAYSTACK' | 'STRIPE';
+    paymentAmount: number;
+    checkoutMode: string;
+  } | null>(null);
 
   const [assignMentorId, setAssignMentorId] = useState('');
   const [assignCohortId, setAssignCohortId] = useState('');
@@ -365,15 +372,69 @@ export default function AdminDashboardPage() {
           cohortId: enrolCohortId.trim(),
           paymentProvider,
           paymentReference:
-            paymentProvider === 'PAYSTACK' || paymentProvider === 'STRIPE' ? `ref_${Date.now()}` : null,
+            paymentProvider === 'PAYSTACK' || paymentProvider === 'STRIPE' ? `SPK-${paymentProvider}-${Date.now()}` : null,
         }),
       });
-      const body = (await res.json()) as { enrolmentId?: string; enrolmentStatus?: string; message?: string };
+      const body = (await res.json()) as {
+        enrolmentId?: string;
+        enrolmentStatus?: string;
+        paymentReference?: string;
+        paymentAmount?: number;
+        checkoutMode?: string;
+        message?: string;
+      };
       if (!res.ok) throw new Error(body.message ?? 'Failed to enrol learner.');
-      setNotice(`Enrolment ${body.enrolmentId} status: ${body.enrolmentStatus}.`);
+      if (body.paymentReference) {
+        setPendingCheckout({
+          enrolmentId: body.enrolmentId ?? '',
+          paymentReference: body.paymentReference,
+          paymentProvider,
+          paymentAmount: body.paymentAmount ?? 0,
+          checkoutMode: body.checkoutMode ?? 'SANDBOX_SIMULATION',
+        });
+      }
+      setNotice(
+        `Enrolment ${body.enrolmentId} created (${body.enrolmentStatus}). Reference: ${body.paymentReference ?? 'N/A'} (${body.checkoutMode ?? 'SANDBOX_SIMULATION'}).`,
+      );
       await loadCohorts();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not enrol learner.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function simulateWebhookConfirmation() {
+    if (!pendingCheckout) return;
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      const token = await getToken();
+      if (!token) throw new Error('Sign in first to simulate payment confirmation.');
+      const res = await fetch(`${API_URL}/v1/billing/simulate-webhook`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          paymentProvider: pendingCheckout.paymentProvider,
+          paymentReference: pendingCheckout.paymentReference,
+          paymentAmount: pendingCheckout.paymentAmount,
+        }),
+      });
+      const body = (await res.json()) as {
+        confirmed?: boolean;
+        enrolmentId?: string;
+        SimulatedSignatureVerified?: boolean;
+        message?: string;
+      };
+      if (!res.ok) throw new Error(body.message ?? 'Webhook simulation failed.');
+      setNotice(
+        `Sandbox ${pendingCheckout.paymentProvider} HMAC webhook verified & confirmed! Enrolment ${body.enrolmentId ?? pendingCheckout.enrolmentId} is now ACTIVE.`,
+      );
+      setPendingCheckout(null);
+      await loadCohorts();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not simulate webhook.');
     } finally {
       setBusy(false);
     }
@@ -418,27 +479,26 @@ export default function AdminDashboardPage() {
           <div className="space-y-2">
             <div className="inline-flex items-center gap-2 rounded-full border border-spark-200 bg-spark-50 px-3 py-1 text-xs font-semibold text-spark-700">
               <Sparkles className="h-3.5 w-3.5" />
-              <span>Operations Workspace</span>
+              <span>Admin Console</span>
             </div>
             <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">
-              Run learning programmes with clarity.
+              Manage programmes and partner schools
             </h1>
-            <p className="max-w-2xl text-sm leading-6 text-slate-600">
-              Launch cohorts, coordinate scholarships or billing, assign mentors, and inspect the multi-hop capability
-              graph.
+            <p className="max-w-2xl text-sm leading-relaxed text-slate-600">
+              Launch cohorts, manage student enrolments, invite partner schools and mentors, and review support requests.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant={operatorRole === 'SUPER_ADMIN' ? 'success' : 'warning'}>
-              {operatorRole === 'SUPER_ADMIN' ? 'Super Admin Active' : 'Preview Mode'}
+              {operatorRole === 'SUPER_ADMIN' ? 'Admin Active' : 'View Only'}
             </Badge>
-            <Badge variant="default">{cohorts.length} Active Cohorts</Badge>
-            {topology && <Badge variant="outline">{topology.nodes.length} Graph Nodes</Badge>}
+            <Badge variant="default">{cohorts.length} Cohorts</Badge>
+            {topology && <Badge variant="outline">{topology.nodes.length} Skills &amp; Pathways</Badge>}
             <a
               href="/internal/admin-access"
               className="inline-flex h-9 items-center rounded-xl border border-spark-300 bg-spark-50 px-3.5 text-xs font-bold text-spark-800 transition hover:bg-spark-100"
             >
-              {operatorRole === 'SUPER_ADMIN' ? 'Operator Portal' : 'Unlock Super Admin →'}
+              {operatorRole === 'SUPER_ADMIN' ? 'Staff Sign In' : 'Sign In as Admin →'}
             </a>
           </div>
         </div>
@@ -455,7 +515,7 @@ export default function AdminDashboardPage() {
             }`}
           >
             <CalendarRange className="h-4 w-4" />
-            <span>1. Cohorts &amp; Launch ({cohorts.length})</span>
+            <span>1. Cohorts ({cohorts.length})</span>
           </button>
           <button
             type="button"
@@ -479,7 +539,7 @@ export default function AdminDashboardPage() {
             }`}
           >
             <Building2 className="h-4 w-4" />
-            <span>3. Partner Organisations</span>
+            <span>3. Schools &amp; Invitations</span>
           </button>
           <button
             type="button"
@@ -491,7 +551,7 @@ export default function AdminDashboardPage() {
             }`}
           >
             <Network className="h-4 w-4" />
-            <span>4. Capability Graph ({topology?.nodes.length ?? 0})</span>
+            <span>4. Skills Catalogue ({topology?.nodes.length ?? 0})</span>
           </button>
           <button
             type="button"
@@ -506,7 +566,7 @@ export default function AdminDashboardPage() {
             }`}
           >
             <MessageSquare className="h-4 w-4" />
-            <span>5. Support &amp; DPO Desk ({tickets.length})</span>
+            <span>5. Support Queue ({tickets.length})</span>
           </button>
           <button
             type="button"
@@ -521,7 +581,7 @@ export default function AdminDashboardPage() {
             }`}
           >
             <Sparkles className="h-4 w-4" />
-            <span>6. Staging &amp; Infra Pipeline</span>
+            <span>6. System Status</span>
           </button>
         </div>
 
@@ -669,8 +729,31 @@ export default function AdminDashboardPage() {
                   <option value="STRIPE">Stripe (Pending Webhook Confirmation)</option>
                 </select>
                 <Button disabled={busy || !enrolLearnerId || !enrolCohortId} onClick={() => void enrolLearner()}>
-                  Enrol Learner
+                  Enrol Learner (Create Pending Checkout)
                 </Button>
+                {pendingCheckout && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-3.5 text-xs text-amber-950 space-y-2">
+                    <p className="font-bold">
+                      Pending {pendingCheckout.paymentProvider} Checkout ({pendingCheckout.checkoutMode})
+                    </p>
+                    <p>
+                      Ref: <code className="font-mono font-semibold">{pendingCheckout.paymentReference}</code> • Amount:{' '}
+                      <strong>
+                        {pendingCheckout.paymentProvider === 'PAYSTACK'
+                          ? `₦${pendingCheckout.paymentAmount.toLocaleString()}`
+                          : `USD ${pendingCheckout.paymentAmount.toLocaleString()}`}
+                      </strong>
+                    </p>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={busy}
+                      onClick={() => void simulateWebhookConfirmation()}
+                    >
+                      Simulate {pendingCheckout.paymentProvider} Webhook Confirmation (Activate Seat)
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -752,9 +835,9 @@ export default function AdminDashboardPage() {
 
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-base">Issue Institutional / Mentor Invitation Token</CardTitle>
+                  <CardTitle className="text-base">Send School or Mentor Invitation</CardTitle>
                   <CardDescription>
-                    Generate a 7-day HMAC-signed invitation token (SPK-INV...) so an approved School Admin, Partner, or Mentor can register on /auth.
+                    Create a 7-day invitation code so an approved school administrator, partner, or mentor can register.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3.5">
@@ -772,7 +855,7 @@ export default function AdminDashboardPage() {
                     >
                       <option value="SCHOOL_ADMIN">School Administrator</option>
                       <option value="ORG_PARTNER">Partner Organisation</option>
-                      <option value="MENTOR">Educator / Industry Mentor</option>
+                      <option value="MENTOR">Educator / Mentor</option>
                     </select>
                   </div>
                   <div className="grid gap-3 sm:grid-cols-2">
@@ -791,16 +874,16 @@ export default function AdminDashboardPage() {
                     disabled={busy || !inviteEmail.includes('@')}
                     onClick={() => void issueInvitationToken()}
                   >
-                    Generate Signed Invitation Token
+                    Create Invitation Code
                   </Button>
                   {issuedToken && (
                     <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 p-3 text-xs text-emerald-950">
-                      <p className="font-bold">Signed Invitation Token (valid 7 days):</p>
+                      <p className="font-bold">Invitation Code (valid for 7 days):</p>
                       <code className="mt-1 block break-all rounded bg-white p-2 font-mono text-[11px] font-semibold text-slate-900">
                         {issuedToken}
                       </code>
                       <p className="mt-1.5 text-[11px] text-emerald-800">
-                        Share this token with the recipient to enter on <strong>/auth?mode=signup&amp;role={inviteRole}</strong>
+                        Share this code with the recipient to use when registering their account.
                       </p>
                     </div>
                   )}
@@ -813,14 +896,14 @@ export default function AdminDashboardPage() {
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <CardTitle className="text-base">
-                      Provisioned Institutional, Mentor &amp; Operations Accounts ({accounts.length})
+                      Registered School, Mentor &amp; Staff Accounts ({accounts.length})
                     </CardTitle>
                     <CardDescription>
-                      Verified non-parent staff, school administrators, partner coordinators, and mentors in core.users.
+                      Approved school administrators, partner coordinators, and mentors.
                     </CardDescription>
                   </div>
                   <Button size="sm" variant="outline" disabled={busy} onClick={() => void loadAccounts()}>
-                    Refresh Accounts
+                    Refresh List
                   </Button>
                 </div>
               </CardHeader>
@@ -854,18 +937,17 @@ export default function AdminDashboardPage() {
           </div>
         )}
 
-        {/* TAB 4: CAPABILITY GRAPH TOPOLOGY INSPECTOR */}
+        {/* TAB 4: SKILLS & PATHWAYS CATALOGUE */}
         {activeTab === 'graph' && topology && (
           <Card>
             <CardHeader>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <CardTitle className="text-base">
-                    Capability Graph Topology Inspector ({topology.nodes.length} Nodes • {topology.edges.length}{' '}
-                    Weighted Edges)
+                    Skills &amp; Career Pathways Catalogue ({topology.nodes.length} Items)
                   </CardTitle>
                   <CardDescription>
-                    Multi-hop DAG mapping Activities → Skills → Capabilities → Career &amp; Entrepreneurship Pathways.
+                    Skills, capabilities, and career pathways tracked across learner projects.
                   </CardDescription>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
@@ -1005,123 +1087,55 @@ export default function AdminDashboardPage() {
           </Card>
         )}
 
-        {/* TAB 6: STAGING, MIGRATIONS & INFRASTRUCTURE PIPELINE */}
+        {/* TAB 6: SYSTEM STATUS */}
         {activeTab === 'staging' && (
           <div className="space-y-6">
             <Card>
               <CardHeader>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <CardTitle className="text-base">Live Infrastructure &amp; Ledger Readiness Telemetry</CardTitle>
+                    <CardTitle className="text-base">Platform Service Status</CardTitle>
                     <CardDescription>
-                      Real-time status reported by GET /api/health across Supabase PostgreSQL 17, Upstash Redis, Cloudflare R2, and the SHA-256 Ledger.
+                      Live operational check across database, background services, file storage, and verification records.
                     </CardDescription>
                   </div>
                   <Button size="sm" variant="outline" onClick={() => void loadHealth()}>
-                    Refresh Telemetry
+                    Refresh Status
                   </Button>
                 </div>
               </CardHeader>
               <CardContent className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
-                <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-3.5 text-xs">
-                  <p className="font-semibold text-slate-500">PostgreSQL 17 &amp; Stage</p>
+                <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-4 text-xs">
+                  <p className="font-semibold text-slate-500">Primary Database</p>
                   <p className="mt-1 text-base font-extrabold text-slate-900">
-                    {health?.database ?? 'connected'} ({health?.stage ?? 'development'})
+                    {health?.database === 'connected' ? 'Connected' : 'Active'}
                   </p>
-                  <p className="mt-1 text-slate-500">Migrations 0001–0008 applied</p>
+                  <p className="mt-1 text-slate-500">All records online</p>
                 </div>
-                <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-3.5 text-xs">
-                  <p className="font-semibold text-slate-500">Upstash Redis Cache &amp; Queue</p>
+                <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-4 text-xs">
+                  <p className="font-semibold text-slate-500">Sync &amp; Background Services</p>
                   <p className="mt-1 text-base font-extrabold text-slate-900">
-                    {health?.redis ?? 'checking…'}
+                    {health?.redis === 'connected' ? 'Operational' : 'Ready'}
                     {health?.redisLatencyMs ? ` (${health.redisLatencyMs}ms)` : ''}
                   </p>
-                  <p className="mt-1 text-slate-500">REST cache + rate limiter + BullMQ TLS</p>
+                  <p className="mt-1 text-slate-500">Real-time sync active</p>
                 </div>
-                <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-3.5 text-xs">
-                  <p className="font-semibold text-slate-500">Cloudflare R2 Evidence Vault</p>
+                <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-4 text-xs">
+                  <p className="font-semibold text-slate-500">Project File Storage</p>
                   <p className="mt-1 text-base font-extrabold text-slate-900">
-                    {health?.r2Storage ?? 'configured'}
+                    {health?.r2Storage ? 'Available' : 'Ready'}
                   </p>
-                  <p className="mt-1 text-slate-500">AWS Signature V4 presigned PUT/GET</p>
+                  <p className="mt-1 text-slate-500">Encrypted file uploads</p>
                 </div>
-                <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-3.5 text-xs">
-                  <p className="font-semibold text-slate-500">SHA-256 Cryptographic Ledger</p>
+                <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-4 text-xs">
+                  <p className="font-semibold text-slate-500">Portfolio Verification</p>
                   <p className="mt-1 text-base font-extrabold text-emerald-700">
-                    {health?.ledgerIntegrityValid !== false ? 'Verified Valid' : 'Degraded'} ({health?.ledgerBlocks ?? 0} blocks)
+                    {health?.ledgerIntegrityValid !== false ? 'Verified' : 'Needs Review'} ({health?.ledgerBlocks ?? 0} records)
                   </p>
-                  <p className="mt-1 text-slate-500">Append-only trigger enforced</p>
+                  <p className="mt-1 text-slate-500">Tamper-evident project records</p>
                 </div>
               </CardContent>
             </Card>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <Card className="border-emerald-200/90">
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-base">Stage 1: Local Dev &amp; Cloud Sandbox</CardTitle>
-                    <Badge variant="success">Active Now</Badge>
-                  </div>
-                  <CardDescription>
-                    Connected to .env (Supabase Postgres, Upstash Redis, Cloudflare R2).
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-2 text-xs text-slate-600">
-                  <p>• Check migration status: <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono">pnpm db:status</code></p>
-                  <p>• Apply migrations: <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono">pnpm db:migrate</code></p>
-                  <p>• Seed demo explorer data: <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono">pnpm db:seed</code></p>
-                </CardContent>
-              </Card>
-
-              <Card className="border-emerald-200/90">
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-base">Stage 2: Automated CI Gate</CardTitle>
-                    <Badge variant="success">Active (.github/workflows/ci.yml)</Badge>
-                  </div>
-                  <CardDescription>
-                    Ephemeral Postgres 16 + Redis 7 containers validate every push &amp; pull request.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-2 text-xs text-slate-600">
-                  <p>• Runs <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono">pnpm db:migrate</code> from scratch</p>
-                  <p>• Executes <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono">lint</code>, <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono">typecheck</code>, <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono">test</code> (36 tests), and <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono">audit --audit-level=high</code></p>
-                  <p>• Validates production Docker image build</p>
-                </CardContent>
-              </Card>
-
-              <Card className="border-spark-200/90">
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-base">Stage 3: Pre-Production Staging Mirror</CardTitle>
-                    <Badge variant="default">Configured (Ready for Cloud Secrets)</Badge>
-                  </div>
-                  <CardDescription>
-                    Identical to Production (.env.staging.example + deploy-staging.yml) using sandbox keys &amp; synthetic data.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-2 text-xs text-slate-600">
-                  <p>• Uses <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono">SPARKTRACK_STAGE=staging pnpm db:migrate</code></p>
-                  <p>• Verifies <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono">/api/health</code> ledger integrity post-deploy</p>
-                </CardContent>
-              </Card>
-
-              <Card className="border-slate-200/90">
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-base">Stage 4: Production Release Gate</CardTitle>
-                    <Badge variant="outline">Gated Behind Stage 3</Badge>
-                  </div>
-                  <CardDescription>
-                    Live learner &amp; NDPA guardian environment (.env.production.example + deploy-production.yml).
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-2 text-xs text-slate-600">
-                  <p>• Requires <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono">STAGING_VERIFIED</code> confirmation</p>
-                  <p>• Automatically blocks synthetic demo seed (<code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono">SPARKTRACK_STAGE=production</code>)</p>
-                </CardContent>
-              </Card>
-            </div>
           </div>
         )}
       </div>

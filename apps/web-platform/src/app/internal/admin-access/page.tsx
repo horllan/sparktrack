@@ -112,13 +112,13 @@ export default function InternalAdminAccessPage() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <Badge variant="warning">
-                <ShieldAlert className="mr-1 h-3.5 w-3.5" /> Restricted Internal Route
+                <ShieldAlert className="mr-1 h-3.5 w-3.5" /> Staff Only
               </Badge>
               <Lock className="h-4 w-4 text-slate-400" />
             </div>
-            <CardTitle className="mt-3 text-xl">Operations &amp; Super Admin Access</CardTitle>
+            <CardTitle className="mt-3 text-xl">Admin &amp; Operations Sign In</CardTitle>
             <CardDescription>
-              This route is unindexed and restricted to authorised SparkTrack platform operators.
+              Restricted to authorised SparkTrack operations staff.
             </CardDescription>
           </CardHeader>
 
@@ -134,7 +134,7 @@ export default function InternalAdminAccessPage() {
                   mode === 'signin' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600'
                 }`}
               >
-                Operator Sign In
+                Staff Sign In
               </button>
               <button
                 type="button"
@@ -146,7 +146,7 @@ export default function InternalAdminAccessPage() {
                   mode === 'bootstrap' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600'
                 }`}
               >
-                Provision Admin Key
+                Activate Admin Key
               </button>
             </div>
 
@@ -166,22 +166,22 @@ export default function InternalAdminAccessPage() {
 
             {mode === 'bootstrap' && (
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-700">Operator Full Name</label>
+                <label className="text-xs font-semibold text-slate-700">Full Name</label>
                 <Input
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
-                  placeholder="Operations Lead Name"
+                  placeholder="Your full name"
                 />
               </div>
             )}
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-700">Operator Email</label>
+              <label className="text-xs font-semibold text-slate-700">Work Email</label>
               <Input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="ops@sparktrack.org"
+                placeholder="name@sparktrack.org"
               />
             </div>
 
@@ -191,37 +191,22 @@ export default function InternalAdminAccessPage() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Operator password"
+                placeholder="Enter your password"
               />
             </div>
 
             <div className="space-y-1.5">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
-                  <KeyRound className="h-3.5 w-3.5 text-spark-600" />
-                  <span>
-                    Operator Security Key {mode === 'signin' ? '(optional if already provisioned)' : '(required)'}
-                  </span>
-                </label>
-                {typeof window !== 'undefined' &&
-                  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAdminSecret('sparktrack_super_admin_bootstrap_secret_2026_v1');
-                        if (!fullName.trim()) setFullName('SparkTrack Platform Founder');
-                      }}
-                      className="rounded-lg border border-spark-200 bg-spark-50 px-2 py-0.5 text-[11px] font-bold text-spark-700 hover:bg-spark-100"
-                    >
-                      Fill Local Dev Key
-                    </button>
-                  )}
-              </div>
+              <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+                <KeyRound className="h-3.5 w-3.5 text-spark-600" />
+                <span>
+                  Security Key {mode === 'signin' ? '(optional if already activated)' : '(required)'}
+                </span>
+              </label>
               <Input
                 type="password"
                 value={adminSecret}
                 onChange={(e) => setAdminSecret(e.target.value)}
-                placeholder="ADMIN_REGISTRATION_SECRET"
+                placeholder="Enter administrator security key"
               />
             </div>
 
@@ -237,10 +222,10 @@ export default function InternalAdminAccessPage() {
             >
               <ShieldCheck className="mr-1.5 h-4 w-4" />
               {busy
-                ? 'Verifying Operator Credentials…'
+                ? 'Signing in…'
                 : mode === 'bootstrap'
-                  ? 'Verify Secret & Provision Super Admin'
-                  : 'Enter Operations Console'}
+                  ? 'Activate Admin Account'
+                  : 'Open Admin Console'}
             </Button>
           </CardContent>
         </Card>

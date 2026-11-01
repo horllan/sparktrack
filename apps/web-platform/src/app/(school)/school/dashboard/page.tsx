@@ -1,29 +1,44 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import {
   Activity,
-  Building2,
-  Compass,
-  FolderKanban,
-  RefreshCw,
-  ShieldCheck,
-  Sparkles,
-  UserPlus,
-  UsersRound,
   Badge,
+  Building2,
   Button,
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
+  Compass,
+  FolderKanban,
   Input,
+  PlayCircle,
+  RefreshCw,
+  ShieldCheck,
+  Sparkles,
+  UserPlus,
+  UsersRound,
 } from '@sparktrack/ui';
 import { createClient } from '../../../../lib/supabase/client';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
-const EDUCATION_STAGES = ['Primary 5', 'Primary 6', 'JSS1', 'JSS2', 'JSS3', 'SS1', 'SS2', 'SS3'];
+
+const EDUCATION_STAGES = [
+  'JSS1',
+  'JSS2',
+  'JSS3',
+  'SS1',
+  'SS2',
+  'SS3',
+  'University / College',
+  'Vocational / Apprenticeship',
+  'Self-taught / no formal education',
+  'Other',
+];
+
 const STUDENT_INTERESTS = [
   'Coding & Programming',
   'Robotics',
@@ -35,23 +50,16 @@ const STUDENT_INTERESTS = [
   'Web Development',
 ];
 
-interface ManagedStudent {
-  learnerId: string;
-  fullName: string;
-  educationStage: string;
-  dateOfBirth: string;
-  consentStatus: string;
-  declaredInterests: string[];
-  schoolName: string | null;
-  accessCode: string;
-}
-
 interface InstitutionAnalytics {
   totals: {
     totalLearners: number;
     verifiedConsentLearners: number;
     sealedArtifacts: number;
     activeCohorts: number;
+  };
+  ledgerAudit: {
+    totalEntries: number;
+    allValid: boolean;
   };
   skillDistribution: Array<{
     code: string;
@@ -68,21 +76,27 @@ interface InstitutionAnalytics {
     countryCode: string;
     subscriptionTier: string;
   }>;
-  ledgerAudit: {
-    totalEntries: number;
-    allValid: boolean;
-    latestLedgerSeq: number | null;
-  };
 }
 
 interface TalentPoolEntry {
   learnerId: string;
   displayName: string;
   educationStage: string;
-  declaredInterests: string[];
   schoolName: string | null;
+  declaredInterests: string[];
   allowPublicPortfolio: boolean;
   artifactCount: number;
+}
+
+interface ManagedStudent {
+  learnerId: string;
+  fullName: string;
+  educationStage: string;
+  dateOfBirth: string;
+  consentStatus: string;
+  declaredInterests: string[];
+  schoolName: string | null;
+  accessCode: string;
 }
 
 export default function SchoolDashboardPage() {
@@ -109,7 +123,11 @@ export default function SchoolDashboardPage() {
     setBusy(true);
     setError('');
     try {
-      const res = await fetch(`${API_URL}/v1/learning/institutions/analytics`);
+      const { data: sessionData } = await createClient().auth.getSession();
+      const token = sessionData.session?.access_token;
+      const res = await fetch(`${API_URL}/v1/learning/institutions/analytics`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
       if (!res.ok) throw new Error('Unable to load institutional analytics');
       const body = (await res.json()) as InstitutionAnalytics;
       setData(body);
@@ -222,18 +240,24 @@ export default function SchoolDashboardPage() {
               See how your learners are growing.
             </h1>
             <p className="max-w-2xl text-sm leading-6 text-slate-600">
-              Register Junior and Senior Secondary students (JSS1–SS3), link guardian contacts for NDPA compliance, and
-              track cohort capability progression across your institution.
+              Register under-18 learners from JSS1 onwards, including learners outside formal education, link guardian
+              contacts for NDPA compliance, and track cohort capability progression across your institution.
             </p>
           </div>
           <div className="flex flex-wrap gap-2.5">
+            <Link href="/demo?role=school">
+              <Button variant="outline">
+                <PlayCircle className="mr-1.5 h-4 w-4" />
+                Interactive School Demo
+              </Button>
+            </Link>
             <Button onClick={() => setShowAddStudent((v) => !v)}>
               <UserPlus className="mr-1.5 h-4 w-4" />
-              {showAddStudent ? 'Close Student Form' : 'Register Student (JSS–SSS)'}
+              {showAddStudent ? 'Close Student Form' : 'Register Student'}
             </Button>
             <Button variant="outline" disabled={busy} onClick={() => void loadAnalytics()}>
               <RefreshCw className={`mr-1.5 h-4 w-4 ${busy ? 'animate-spin' : ''}`} />
-              {busy ? 'Refreshing…' : 'Refresh Live Telemetry'}
+              {busy ? 'Refreshing…' : 'Refresh Data'}
             </Button>
           </div>
         </div>
@@ -257,7 +281,7 @@ export default function SchoolDashboardPage() {
           <Card className="border-spark-300 shadow-lg">
             <div className="h-1.5 bg-gradient-to-r from-violet-600 via-spark-600 to-cyan-500" />
             <CardHeader>
-              <CardTitle className="text-lg">Register a Student &amp; Link Parent/Guardian (JSS1–SS3)</CardTitle>
+              <CardTitle className="text-lg">Register an Under-18 Learner &amp; Link Parent/Guardian</CardTitle>
               <CardDescription>
                 Schools and partner organisations can onboard students directly. Guardian contact details are required
                 so the parent retains NDPA 2023 consent control.
@@ -535,16 +559,16 @@ export default function SchoolDashboardPage() {
 
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-base">Guardian Opt-In Talent Discovery</CardTitle>
+                  <CardTitle className="text-base">Shared Student Portfolios</CardTitle>
                   <CardDescription>
-                    Aggregate count on public views ({data.optedInLearnerCount} opted in). Authenticated school and partner accounts see pseudonymized discovery profiles below.
+                    Learners whose parents have approved sharing their portfolios with partner schools and programmes ({data.optedInLearnerCount} opted in).
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-3.5">
                     <p className="text-3xl font-extrabold text-slate-900">{data.optedInLearnerCount}</p>
                     <p className="mt-0.5 text-xs text-slate-500">
-                      Learners with verified guardian consent &amp; partner discovery opt-in
+                      Learners with parent approval for partner discovery
                     </p>
                   </div>
 
@@ -558,7 +582,7 @@ export default function SchoolDashboardPage() {
                           <div>
                             <p className="font-bold text-slate-900">{learner.displayName}</p>
                             <p className="text-slate-500">
-                              {learner.schoolName ?? 'Independent Explorer'} • {learner.artifactCount} sealed artifacts
+                              {learner.schoolName ?? 'Independent Learner'} • {learner.artifactCount} verified projects
                             </p>
                             {learner.declaredInterests.length > 0 && (
                               <div className="mt-1.5 flex flex-wrap gap-1">
@@ -571,12 +595,12 @@ export default function SchoolDashboardPage() {
                             )}
                           </div>
                           {learner.allowPublicPortfolio && (
-                            <a
-                              href={`/portfolio/${learner.learnerId}`}
+                            <Link
+                              href={`/student/portfolio?learnerId=${encodeURIComponent(learner.learnerId)}`}
                               className="rounded-lg border border-spark-200 bg-spark-50 px-2.5 py-1.5 font-semibold text-spark-700 hover:bg-spark-100"
                             >
                               View Portfolio →
-                            </a>
+                            </Link>
                           )}
                         </div>
                       ))}

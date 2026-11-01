@@ -40,39 +40,39 @@ const CATEGORIES: Array<{
 }> = [
   {
     id: 'SCHOOL_PARTNERSHIP',
-    label: 'School & Institutional Partnership',
-    subtitle: 'Onboard a secondary school, school network, or government youth programme',
-    sla: '24h Partnership SLA',
+    label: 'School & Partner Onboarding',
+    subtitle: 'Set up SparkTrack for a school, school network, or youth training programme',
+    sla: '1 Business Day',
   },
   {
     id: 'PARENT_CONSENT_HELP',
-    label: 'Parent & Family Assistance',
-    subtitle: 'Help registering a JSS/SSS child, SMS OTP verification, or report questions',
-    sla: 'Same-Day Family Desk',
+    label: 'Parent & Family Support',
+    subtitle: 'Help adding a child, verifying an SMS code, or reading a progress report',
+    sla: 'Same-Day Reply',
   },
   {
     id: 'SCHOLARSHIP_SPONSORSHIP',
-    label: 'Sponsor Youth Scholarships (CSR / NGO)',
-    subtitle: 'Fund cohorts for underserved learners across Nigeria and Africa',
-    sla: 'Executive Desk',
+    label: 'Sponsor a Cohort',
+    subtitle: 'Fund training cohorts or scholarships for students and youth programmes',
+    sla: 'Partnerships Team',
   },
   {
     id: 'PRIVACY_DPO_REQUEST',
-    label: 'Data Protection Officer (NDPA / GDPR / POPIA)',
-    subtitle: 'Data Subject Rights, Right to Erasure, or Institutional DPA signing',
-    sla: 'Priority Compliance Queue',
+    label: 'Privacy & Data Requests',
+    subtitle: 'Questions about data privacy, account deletion, or school data agreements',
+    sla: 'Privacy Team',
   },
   {
     id: 'GENERAL_SUPPORT',
-    label: 'General Platform Inquiry',
-    subtitle: 'Questions from mentors, educators, researchers, or media',
-    sla: '24–48h Response',
+    label: 'General Questions',
+    subtitle: 'Questions from mentors, educators, or community partners',
+    sla: '1–2 Business Days',
   },
   {
     id: 'TECHNICAL_ISSUE',
-    label: 'Technical & Offline Sync Support',
-    subtitle: 'Help with PWA offline sync, cohort billing webhooks, or account access',
-    sla: 'Engineering Support',
+    label: 'Technical Help',
+    subtitle: 'Help with signing in, syncing saved work, or account access',
+    sla: 'Support Team',
   },
 ];
 
@@ -155,20 +155,19 @@ function ContactPageContent() {
             <div className="space-y-2">
               <div className="inline-flex items-center gap-2 rounded-full border border-spark-200 bg-spark-50 px-3 py-1 text-xs font-bold text-spark-700">
                 <Sparkles className="h-3.5 w-3.5" />
-                <span>Global Support, Partnerships &amp; DPO Desk</span>
+                <span>Support &amp; Partnerships</span>
               </div>
               <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">
-                Connect with the SparkTrack team.
+                Get in touch with our team
               </h1>
-              <p className="max-w-2xl text-sm leading-6 text-slate-600">
-                Every inquiry is routed directly to our Operations, Institutional Partnerships, or Data Protection
-                Officer (DPO) team with a tracked reference number.
+              <p className="max-w-2xl text-sm leading-relaxed text-slate-600">
+                Send us a message below and we will route it to the right team with a reference number you can track.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
               <Link href="/legal">
                 <Button variant="outline">
-                  <Scale className="mr-1.5 h-4 w-4" /> Legal &amp; Privacy Center
+                  <Scale className="mr-1.5 h-4 w-4" /> Privacy &amp; Terms
                 </Button>
               </Link>
             </div>
@@ -210,35 +209,35 @@ function ContactPageContent() {
             {/* Regional Offices & Direct Contact Channels */}
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="text-base">Regional &amp; Enterprise Channels</CardTitle>
-                <CardDescription>Nigeria HQ • Pan-Africa • International</CardDescription>
+                <CardTitle className="text-base">Direct Contact Channels</CardTitle>
+                <CardDescription>Reach the right team directly</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-3 text-xs text-slate-700">
-                <div className="flex items-start gap-3 rounded-xl bg-slate-50 p-3">
+              <CardContent className="space-y-3 text-xs leading-relaxed text-slate-700">
+                <div className="flex items-start gap-3 rounded-xl bg-slate-50 p-3.5">
                   <Globe className="mt-0.5 h-4 w-4 shrink-0 text-spark-600" />
                   <div>
-                    <p className="font-bold text-slate-900">Nigeria &amp; West Africa Desk (Lagos / Abuja)</p>
+                    <p className="font-bold text-slate-900">Schools &amp; Community Programmes</p>
                     <p className="mt-0.5 text-slate-600">
-                      Secondary School pilots, Termii SMS consent, Paystack cohorts &amp; NDPA 2023 compliance.
+                      Support for secondary schools, vocational centres, and youth cohorts across Nigeria and Africa.
                     </p>
                   </div>
                 </div>
-                <div className="flex items-start gap-3 rounded-xl bg-slate-50 p-3">
+                <div className="flex items-start gap-3 rounded-xl bg-slate-50 p-3.5">
                   <Mail className="mt-0.5 h-4 w-4 shrink-0 text-spark-600" />
                   <div>
-                    <p className="font-bold text-slate-900">Direct Department Emails</p>
+                    <p className="font-bold text-slate-900">Email Addresses</p>
                     <p className="mt-0.5 text-slate-600">
-                      Support: <code>support@sparktrack.org</code> • Partnerships: <code>schools@sparktrack.org</code> •
-                      DPO: <code>dpo@sparktrack.org</code>
+                      Support: <code>support@sparktrack.org</code> • Schools: <code>schools@sparktrack.org</code> •
+                      Privacy: <code>privacy@sparktrack.org</code>
                     </p>
                   </div>
                 </div>
-                <div className="flex items-start gap-3 rounded-xl bg-slate-50 p-3">
+                <div className="flex items-start gap-3 rounded-xl bg-slate-50 p-3.5">
                   <Phone className="mt-0.5 h-4 w-4 shrink-0 text-spark-600" />
                   <div>
-                    <p className="font-bold text-slate-900">Employee Operations Queue</p>
+                    <p className="font-bold text-slate-900">Tracked Responses</p>
                     <p className="mt-0.5 text-slate-600">
-                      All tickets submitted here appear live in the SparkTrack Operations Console for staff triage.
+                      Every request receives a reference number so our support team can follow up promptly.
                     </p>
                   </div>
                 </div>
@@ -253,12 +252,12 @@ function ContactPageContent() {
               <div className="flex items-center justify-between">
                 <Badge variant="default">{CATEGORIES.find((c) => c.id === category)?.label}</Badge>
                 <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700">
-                  <ShieldCheck className="h-3.5 w-3.5" /> Employee-Monitored Queue
+                  <ShieldCheck className="h-3.5 w-3.5" /> Direct Support
                 </span>
               </div>
-              <CardTitle className="mt-2 text-xl">Submit an Official Request or Inquiry</CardTitle>
+              <CardTitle className="mt-2 text-xl">Send Us a Message</CardTitle>
               <CardDescription>
-                Fill in your details below. You will receive an immediate ticket reference number.
+                Fill in your details below and we will reply by email with your reference number.
               </CardDescription>
             </CardHeader>
 

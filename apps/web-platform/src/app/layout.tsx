@@ -7,8 +7,9 @@ import { SparkChatbot } from '../components/spark-chatbot';
 import { PwaRegistrar } from '../components/pwa-registrar';
 
 export const metadata: Metadata = {
-  title: 'SparkTrack — Explore what you can do',
-  description: 'Discover interests, build practical skills, and see your growth through real experiences.',
+  title: 'SparkTrack | Build Real Skills and Verified Portfolios',
+  description:
+    'Track real projects, get mentor feedback, and build a verified portfolio from secondary school through university, NYSC, and career growth.',
   manifest: '/manifest.json',
 };
 export const viewport: Viewport = { width: 'device-width', initialScale: 1, themeColor: '#172554' };

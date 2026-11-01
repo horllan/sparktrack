@@ -33,49 +33,53 @@ const EXPLAINER_CHAPTERS = [
   {
     id: 'register',
     time: '0:00',
-    step: 'Scene 01',
-    title: 'Parent or School Registers the Learner',
-    subtitle: 'Built for Junior & Senior Secondary (JSS1–SS3)',
+    step: 'Part 1',
+    shortLabel: 'Start',
+    title: 'Set up a profile in minutes',
+    subtitle: 'For students, graduates, and adult learners',
     narration:
-      'A parent, guardian, or school creates a verified account first, adds their JSS/SSS student, selects initial curiosity areas, and sets NDPA 2023 privacy rules.',
-    highlight: 'NDPA 2023 Child-Safe Onboarding',
-    metrics: ['Guardian Consent Verified', 'Student ID: SPK-11111111', 'Default: Private Profile'],
+      'Start from secondary school (JSS1 and above), university, NYSC, work, or independent learning. Learners under 18 link a parent or guardian for approval; adults manage their own account.',
+    highlight: 'Child-Safe by Default',
+    metrics: ['Parent Consent Protected', 'Private by Default', 'Simple Setup'],
     accent: 'from-coral-500/25 via-spark-500/20 to-cyan-400/20',
   },
   {
     id: 'capture',
     time: '0:22',
-    step: 'Scene 02',
-    title: 'Learners Build & Capture Real Projects',
-    subtitle: 'Works online and offline across school labs',
+    step: 'Part 2',
+    shortLabel: 'Build',
+    title: 'Record real projects, online or offline',
+    subtitle: 'Built for school labs and workshops',
     narration:
-      'Instead of relying only on exam scores, students log robotics builds, Python scripts, design prototypes, or business pitches—sealed into a tamper-evident SHA-256 ledger.',
-    highlight: 'Offline-First Evidence Capture',
-    metrics: ['Solar Irrigation Controller', 'Skills: Robotics & Python', 'SHA-256 Block #14 Sealed'],
+      'Grades only tell part of the story. Learners save code, hardware builds, designs, or business ideas, even when the internet connection drops.',
+    highlight: 'Works Offline',
+    metrics: ['Solar Irrigation Project', 'Skills: Robotics & Python', 'Verified Record'],
     accent: 'from-cyan-400/25 via-spark-500/20 to-indigo-500/20',
   },
   {
     id: 'mentor',
     time: '0:48',
-    step: 'Scene 03',
-    title: 'Mentors Verify Quality & Behavioural Signals',
-    subtitle: 'Educators & coaches observe how learners solve problems',
+    step: 'Part 3',
+    shortLabel: 'Review',
+    title: 'Mentors review work and highlight strengths',
+    subtitle: 'Quick, structured feedback from teachers and coaches',
     narration:
-      'Assigned mentors review student artifacts, score rubric quality, and log 1–4 behavioural signals like Analytical Problem Solving, Creative Framing, and Initiative.',
-    highlight: '1.35× Mentor-Verified Skill Weight',
-    metrics: ['Quality Score: 90%', 'Signal: Analytical (4 · Standout)', 'Mentor Agreement: Verified'],
+      'Mentors review each project in under three minutes, score the quality of work, and note practical habits like problem solving, creativity, and persistence.',
+    highlight: 'Mentor Reviewed',
+    metrics: ['Quality Score: 90%', 'Strength: Problem Solving', 'Mentor Feedback Added'],
     accent: 'from-emerald-400/25 via-cyan-500/20 to-spark-500/20',
   },
   {
     id: 'pathways',
     time: '1:12',
-    step: 'Scene 04',
-    title: '13-Part Development & Future Pathways Report',
-    subtitle: 'Exploration over fixed labels',
+    step: 'Part 4',
+    shortLabel: 'Grow',
+    title: 'Clear progress reports and next steps',
+    subtitle: 'Practical guidance based on real work',
     narration:
-      'Parents and schools unlock a 13-part longitudinal report showing declared vs. observed strengths, bitemporal skill momentum, and career/entrepreneurship pathways to explore next.',
-    highlight: 'Guardrail-Safe AI Synthesis',
-    metrics: ['Top Pathway: Embedded Systems', 'Divergence Insight Detected', 'Non-Deterministic Guidance'],
+      'Parents, learners, and schools get a clear 13-part progress report that compares interests with actual project strengths and suggests practical career or study options.',
+    highlight: 'Clear Progress Reports',
+    metrics: ['Strength: Embedded Systems', 'New Talent Discovered', 'Actionable Next Steps'],
     accent: 'from-violet-500/25 via-spark-500/20 to-cyan-400/20',
   },
 ];
@@ -83,86 +87,90 @@ const EXPLAINER_CHAPTERS = [
 const TOUR_STEPS = [
   {
     id: 'parent-setup',
-    badge: 'Step 1 • Family & School Onboarding',
-    title: 'Parents or Schools Register Junior & Secondary Students',
+    tabLabel: '1. Onboarding',
+    badge: 'Step 1 • Getting Started',
+    title: 'Start from wherever you are today',
     description:
-      'Young learners in JSS1–SS3 do not need a personal email to begin. A parent, guardian, or school administrator registers first and adds the student in under 60 seconds.',
+      'Adults can create their own profile right away. Learners under 18 can be added by a parent or school, with parent approval before any project work is shared.',
     bullets: [
-      'Parent or School creates their verified account at /auth',
-      'Adds student name, date of birth, education stage (e.g. JSS2, SS1), and curiosity areas',
-      'Parent controls public portfolio & partner talent discovery toggles at any time',
+      'Pick your current stage and what you want to achieve next',
+      'School details are optional for adult and independent learners',
+      'Profiles for learners under 18 stay private by default',
     ],
-    ctaLabel: 'Register as Parent or School',
-    ctaHref: '/auth?mode=signup&role=PARENT',
-    previewTitle: 'Parent Child-Registration Card',
+    ctaLabel: 'Create a learner profile',
+    ctaHref: '/student/onboarding',
+    previewTitle: 'Sample Learner Profile',
     previewItems: [
-      { label: 'Student Name', value: 'Tobi Adeyemi (JSS3 • Age 13)' },
-      { label: 'Curiosity Areas', value: 'Robotics, Coding & Programming, AI' },
-      { label: 'NDPA Consent Status', value: 'VERIFIED_ACTIVE (Parent Managed)' },
-      { label: 'Student Access Code', value: 'SPK-11111111' },
+      { label: 'Learner', value: 'Tobi Adeyemi (JSS3, Age 13)' },
+      { label: 'Starting Interests', value: 'Robotics, Coding, AI' },
+      { label: 'Parent Approval', value: 'Active (Managed by Parent)' },
+      { label: 'Profile Privacy', value: 'Private by Default' },
     ],
   },
   {
     id: 'student-capture',
-    badge: 'Step 2 • Learner Project Log',
-    title: 'Students Log Real Projects—Even Without Internet',
+    tabLabel: '2. Project Log',
+    badge: 'Step 2 • Saving Work',
+    title: 'Save projects even when the internet is down',
     description:
-      'Whether in a weekend robotics camp or a school computer lab with unstable Wi-Fi, learners record what they built, attach links/media, and tag the skills they practiced.',
+      'Whether in a school computer lab or a weekend workshop, learners can record what they built, attach files or links, and tag the skills they used.',
     bullets: [
-      'Saves to local IndexedDB automatically when offline and syncs when back online',
-      'Every synced project is cryptographically sealed in the append-only SHA-256 ledger',
-      'Friendly skill progress bars show Beginners becoming Developing, Competent, and Advanced',
+      'Saves on your device when offline and syncs automatically when back online',
+      'Each completed project is added to a tamper-proof portfolio record',
+      'Clear progress bars show skills growing from Beginner to Advanced',
     ],
-    ctaLabel: 'Explore Student Learning Hub',
+    ctaLabel: 'Open Student Workspace',
     ctaHref: '/student/dashboard',
-    previewTitle: 'Learner Project Evidence Entry',
+    previewTitle: 'Sample Project Entry',
     previewItems: [
-      { label: 'Project Title', value: 'Arduino Smart Classroom Attendance Sensor' },
-      { label: 'Artifact Type', value: 'PROJECT_SUBMISSION' },
-      { label: 'Skills Practiced', value: 'Robotics & Hardware, Python Programming' },
-      { label: 'Sync & Ledger State', value: 'Synced & Sealed • Block #12' },
+      { label: 'Project Title', value: 'Smart Classroom Attendance Sensor' },
+      { label: 'Category', value: 'Hardware & Coding Project' },
+      { label: 'Skills Used', value: 'Robotics, Python Programming' },
+      { label: 'Status', value: 'Saved & Verified' },
     ],
   },
   {
     id: 'mentor-review',
-    badge: 'Step 3 • Mentor Verification Studio',
-    title: 'Mentors Score Work & Observe Behavioural Signals',
+    tabLabel: '3. Mentor Review',
+    badge: 'Step 3 • Mentor Feedback',
+    title: 'Mentors review projects in under three minutes',
     description:
-      'Teachers and coaches use a 2-column review workspace to verify student submissions and record 1–4 behavioural signal observations that reveal hidden talent.',
+      'Teachers and coaches review submitted work, score project quality, and note how the learner approached the problem.',
     bullets: [
-      'One-click rubric quality presets (70%, 80%, 90%, 95%)',
-      'Behavioural signals: Analytical Problem Solving, Creative Framing, Persistence, Collaboration',
-      'Immediately triggers bitemporal skill recomputation across the capability graph',
+      'Quick quality scoring with clear rubric presets',
+      'Highlights strengths like problem solving, persistence, and teamwork',
+      'Updates the learner’s skill profile and progress report right away',
     ],
-    ctaLabel: 'Open Mentor Studio',
+    ctaLabel: 'Open Mentor Workspace',
     ctaHref: '/mentor/dashboard',
-    previewTitle: 'Mentor Verification & Signal Rubric',
+    previewTitle: 'Sample Mentor Review',
     previewItems: [
-      { label: 'Reviewed Submission', value: 'Arduino Smart Classroom Attendance Sensor' },
-      { label: 'Rubric Quality Score', value: '90% (Mentor Verified — 1.35× weight)' },
-      { label: 'Observed Signal', value: 'ANALYTICAL_PROBLEM_SOLVING • 4 (Standout)' },
-      { label: 'Engine Action', value: 'Bitemporal Skill State Updated' },
+      { label: 'Project Reviewed', value: 'Smart Classroom Attendance Sensor' },
+      { label: 'Quality Score', value: '90% (Verified by Mentor)' },
+      { label: 'Key Strength', value: 'Problem Solving & Persistence' },
+      { label: 'Mentor Note', value: 'Clean wiring and well-tested sensor logic' },
     ],
   },
   {
     id: 'report-pathways',
-    badge: 'Step 4 • 13-Part Development Report',
-    title: 'Discover Emerging Strengths & Future Pathways',
+    tabLabel: '4. Progress Report',
+    badge: 'Step 4 • Progress & Next Steps',
+    title: 'Spot hidden strengths and practical future options',
     description:
-      'Parents and schools view a structured 13-part report that compares what a student says they like with what their real project evidence shows—opening doors to new career and entrepreneurship pathways.',
+      'Parents and schools view a clear 13-part report comparing what a learner initially picked with what their actual projects show.',
     bullets: [
-      'Detects hidden strengths (e.g., declared Graphic Design, but excels in Systems Engineering)',
-      'Recommends non-deterministic Career & Entrepreneurship pathways to explore next',
-      'Verified by a dual-layer AI Guardrail so no child is ever boxed into a fixed label',
+      'Spots unexpected strengths that exams often miss',
+      'Suggests practical study streams, careers, and project ideas to try next',
+      'Written in plain, encouraging language without boxing learners into fixed labels',
     ],
-    ctaLabel: 'View Sample 13-Part Report',
-    ctaHref: '/parent/dashboard',
-    previewTitle: '13-Part Longitudinal Report Snapshot',
+    ctaLabel: 'Explore Interactive Demo',
+    ctaHref: '/demo',
+    previewTitle: 'Sample Progress Report Summary',
     previewItems: [
-      { label: 'Strongest Observed Skills', value: 'Robotics (Competent • 78%), Python (Developing • 64%)' },
-      { label: 'Declared vs Observed Insight', value: 'Strong emerging systems-building signal detected' },
-      { label: 'Pathways to Explore', value: 'Embedded Systems & Robotics, Agritech Founder' },
-      { label: 'AI Guardrail Check', value: 'Passed (100% Exploratory Framing)' },
+      { label: 'Top Verified Skills', value: 'Robotics (78%), Python (64%)' },
+      { label: 'Key Insight', value: 'Strong talent in hardware and systems building' },
+      { label: 'Suggested Options', value: 'Embedded Systems, Engineering Stream' },
+      { label: 'Next Step', value: 'Build a solar sensor prototype' },
     ],
   },
 ];
@@ -171,7 +179,7 @@ const SPACES = [
   {
     title: 'For Parents & Guardians',
     description:
-      'Register your JSS/SSS child, control NDPA privacy settings, and read their 13-part development report.',
+      'Support a learner at any stage, manage privacy settings, and follow evidence-backed growth over time.',
     href: '/auth?mode=signup&role=PARENT',
     dashboardHref: '/parent/dashboard',
     icon: HeartHandshake,
@@ -198,8 +206,8 @@ const SPACES = [
   },
   {
     title: 'For Learners',
-    description: 'Log projects, build practical skills, and watch your capability portfolio grow over time.',
-    href: '/student/dashboard',
+    description: 'Start from JSS1, university, NYSC, work, a career change, or independent learning. Build practical skills and proof over time.',
+    href: '/student/onboarding',
     dashboardHref: '/student/portfolio',
     icon: Compass,
     tone: 'bg-spark-50 text-spark-800',
@@ -240,36 +248,35 @@ export default function HomePage() {
             <div className="max-w-2xl">
               <Badge className="border border-white/15 bg-white/10 text-cyan-200">
                 <Sparkles size={13} className="mr-1.5" aria-hidden="true" />
-                Parent, School &amp; Youth Capability Intelligence
+                Lifelong Learning &amp; Capability Development
               </Badge>
 
-              <h1 className="mt-5 text-4xl font-extrabold leading-[1.07] tracking-[-0.04em] text-white sm:text-5xl lg:text-[3.45rem]">
-                Your child’s future isn’t one exam score.{' '}
-                <span className="text-cyan-300">Discover what they can build.</span>
+              <h1 className="mt-5 text-4xl font-extrabold leading-[1.1] tracking-[-0.035em] text-white sm:text-5xl lg:text-[3.35rem]">
+                Your future isn’t decided by a single exam.{' '}
+                <span className="text-cyan-300">Show what you can build.</span>
               </h1>
 
-              <p className="mt-5 max-w-xl text-base leading-7 text-blue-100/85 sm:text-lg">
-                SparkTrack helps parents, secondary schools, and mentors turn a young person’s curiosity and real
-                projects into verified skills and future career pathways—from <strong>JSS1 to SS3</strong>.
+              <p className="mt-5 max-w-xl text-base leading-relaxed text-blue-100/90 sm:text-lg">
+                SparkTrack helps learners build practical skills and a verified portfolio of real projects, from{' '}
+                <strong>JSS1 onwards</strong> through university, NYSC, and career growth. Parents, schools, and mentors
+                support every step.
               </p>
 
               {/* Primary CTAs */}
               <div className="mt-8 flex flex-wrap gap-3">
-                <Link href="/auth?mode=signup&role=PARENT">
+                <Link href="/demo">
                   <span className="inline-flex h-12 items-center justify-center rounded-xl bg-cyan-300 px-6 text-sm font-extrabold text-[#0e1b38] shadow-lg shadow-cyan-950/25 transition-all hover:-translate-y-0.5 hover:bg-cyan-200">
-                    <UserPlus size={17} className="mr-2" aria-hidden="true" />
-                    Register as Parent or School
+                    <PlayCircle size={18} className="mr-2" aria-hidden="true" />
+                    Explore Interactive Demo
                   </span>
                 </Link>
 
-                <button
-                  type="button"
-                  onClick={() => setCinemaModalOpen(true)}
-                  className="inline-flex h-12 items-center justify-center rounded-xl border border-white/25 bg-white/10 px-6 text-sm font-semibold text-white backdrop-blur transition-colors hover:bg-white/15"
-                >
-                  <PlayCircle size={18} className="mr-2 text-cyan-300" aria-hidden="true" />
-                  Watch How SparkTrack Works
-                </button>
+                <Link href="/student/onboarding">
+                  <span className="inline-flex h-12 items-center justify-center rounded-xl border border-white/25 bg-white/10 px-6 text-sm font-semibold text-white backdrop-blur transition-colors hover:bg-white/15">
+                    <UserPlus size={17} className="mr-2 text-cyan-300" aria-hidden="true" />
+                    Start Your Profile
+                  </span>
+                </Link>
               </div>
 
               {/* Secondary Quick Links */}
@@ -277,18 +284,21 @@ export default function HomePage() {
                 <Link href="/auth?mode=signin" className="underline decoration-cyan-400/60 underline-offset-4 hover:text-white">
                   Already have an account? Sign in →
                 </Link>
-                <a href="#tour" className="inline-flex items-center gap-1.5 text-cyan-300 hover:underline">
-                  <Compass size={14} /> Take the 60-second interactive tour
-                </a>
+                <button
+                  type="button"
+                  onClick={() => setCinemaModalOpen(true)}
+                  className="inline-flex items-center gap-1.5 text-cyan-300 hover:underline"
+                >
+                  <Play size={13} /> Watch 4-part walkthrough
+                </button>
               </div>
 
               <div className="mt-7 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-white/10 pt-5 text-xs font-medium text-blue-100/75">
                 <span className="inline-flex items-center gap-2">
-                  <ShieldCheck size={15} className="text-emerald-300" aria-hidden="true" /> NDPA 2023 Parent-First
-                  Privacy
+                  <ShieldCheck size={15} className="text-emerald-300" aria-hidden="true" /> Private by default for under-18 learners
                 </span>
                 <span className="inline-flex items-center gap-2">
-                  <Sparkles size={15} className="text-cyan-300" aria-hidden="true" /> SHA-256 Verified Project Evidence
+                  <Sparkles size={15} className="text-cyan-300" aria-hidden="true" /> Mentor-verified project portfolios
                 </span>
               </div>
             </div>
@@ -378,7 +388,7 @@ export default function HomePage() {
                           <span>0{idx + 1}</span>
                           <span>{chap.time}</span>
                         </div>
-                        <p className="mt-1 truncate text-xs font-semibold">{chap.title.split(' ')[0]}</p>
+                        <p className="mt-1 truncate text-xs font-semibold">{chap.shortLabel}</p>
                       </button>
                     );
                   })}
@@ -388,15 +398,15 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* HOW REGISTRATION & ONBOARDING WORKS FOR JSS / SSS LEARNERS */}
+        {/* Lifelong learner entry and supported learning journeys */}
         <section id="how-it-works" className="scroll-mt-24 space-y-8">
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.15em] text-spark-700">
-                How Registration Works (JSS1 – SS3)
+                One learning space. Every starting point.
               </p>
               <h2 className="mt-2 text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">
-                Parents &amp; Schools lead registration. Students lead discovery.
+                Your experience and goals shape what comes next.
               </h2>
             </div>
             <Link href="/auth?mode=signup&role=PARENT">
@@ -410,30 +420,30 @@ export default function HomePage() {
             {[
               {
                 step: 'Step 01',
-                title: 'Parent or School Creates an Account',
+                title: 'Choose your starting point',
                 description:
-                  'Because Junior and Secondary students are minors, a Parent/Guardian or School Administrator signs up first at /auth to establish a trusted account.',
-                badge: 'Parent / School First',
-                href: '/auth?mode=signup&role=PARENT',
-                cta: 'Register as Parent or School',
+                  'Start in JSS1 or later, at university, during NYSC, while employed, between careers, or without formal education. SparkTrack meets you where you are.',
+                badge: 'Every learner welcome',
+                href: '/student/onboarding',
+                cta: 'Create a learner space',
               },
               {
                 step: 'Step 02',
-                title: 'Add Your Student & Set Privacy',
+                title: 'Set a goal that matters to you',
                 description:
-                  'Inside the Parent or School dashboard, click "Add Child / Student" to enter their stage (e.g. JSS2, SS1), curiosity areas, and NDPA 2023 consent preferences.',
-                badge: 'Instant Student Profile',
-                href: '/parent/dashboard',
-                cta: 'See Parent Child Setup',
+                  'Explore interests, build practical skills, prepare for work, grow in your career, change direction, or start a business. Under-18 learners include a guardian.',
+                badge: 'Built around your next step',
+                href: '/student/onboarding',
+                cta: 'Choose your goal',
               },
               {
                 step: 'Step 03',
-                title: 'Projects, Mentor Review & 13-Part Report',
+                title: 'Keep moving in familiar ways',
                 description:
-                  'Students log projects (online or offline), mentors verify quality and behavioural signals, and families unlock the 13-part longitudinal pathways report.',
-                badge: 'Longitudinal Growth',
+                  'Build and save work in SparkTrack. The learner journey is designed around familiar touchpoints such as WhatsApp for useful, opted-in reminders and quick returns, while progress and evidence stay in your learner space.',
+                badge: 'Your work stays yours',
                 href: '/student/dashboard',
-                cta: 'Preview Learner Hub',
+                cta: 'Open learner space',
               },
             ].map((item) => (
               <Card key={item.step} className="flex flex-col justify-between border-slate-200/90">
@@ -487,7 +497,7 @@ export default function HomePage() {
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
-                  0{idx + 1}. {step.id.replace('-', ' ').toUpperCase()}
+                  {step.tabLabel}
                 </button>
               ))}
             </div>
@@ -603,16 +613,16 @@ export default function HomePage() {
             </span>
             <div>
               <h2 className="font-bold text-slate-900">Growth should feel safe, supported, and personal.</h2>
-              <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600">
-                SparkTrack focuses on development—never fixed career labels. Every minor profile defaults to private
-                under NDPA 2023 until a verified parent or guardian grants consent.
+              <p className="mt-1 max-w-2xl text-sm leading-relaxed text-slate-600">
+                SparkTrack focuses on practical skill growth rather than fixed labels. Every profile for a learner under
+                18 stays private by default until a parent or guardian approves it.
               </p>
             </div>
           </div>
           <div className="flex shrink-0 flex-wrap gap-2.5">
             <Link href="/parent/consent">
               <span className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-800 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50">
-                SMS Consent Portal <ArrowUpRight size={16} className="ml-1.5" aria-hidden="true" />
+                Parent SMS Code <ArrowUpRight size={16} className="ml-1.5" aria-hidden="true" />
               </span>
             </Link>
             <Link href="/student/portfolio">
@@ -624,19 +634,19 @@ export default function HomePage() {
         </section>
       </div>
 
-      {/* FULLSCREEN CINEMA EXPLAINER MODAL (Supports Gemini MP4/WebM Video + Interactive Chapters) */}
+      {/* FULLSCREEN WALKTHROUGH MODAL */}
       {cinemaModalOpen && (
         <div
           role="dialog"
           aria-modal="true"
-          aria-label="SparkTrack Explainer Video Theater"
+          aria-label="SparkTrack Walkthrough"
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-md"
         >
           <div className="w-full max-w-4xl overflow-hidden rounded-3xl border border-white/15 bg-[#0d172f] text-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-white/10 px-6 py-4">
               <div className="flex items-center gap-2.5">
                 <PlayCircle className="h-5 w-5 text-cyan-300" />
-                <span className="text-sm font-bold">SparkTrack Explainer — How Potential Grows</span>
+                <span className="text-sm font-bold">How SparkTrack Works</span>
               </div>
               <button
                 type="button"
@@ -666,12 +676,10 @@ export default function HomePage() {
                     <Badge className="bg-cyan-400/20 text-cyan-300">
                       {currentScene.step} • {currentScene.time}
                     </Badge>
-                    <span className="text-xs text-slate-400">
-                      Gemini Explainer Video Slot Ready (set <code>NEXT_PUBLIC_HERO_VIDEO_URL</code> when rendered)
-                    </span>
+                    <span className="text-xs text-slate-400">{currentScene.highlight}</span>
                   </div>
                   <h3 className="mt-4 text-2xl font-extrabold text-white sm:text-3xl">{currentScene.title}</h3>
-                  <p className="mt-3 text-base leading-7 text-slate-300">{currentScene.narration}</p>
+                  <p className="mt-3 text-base leading-relaxed text-slate-300">{currentScene.narration}</p>
                   <div className="mt-6 grid gap-3 sm:grid-cols-3">
                     {currentScene.metrics.map((m) => (
                       <div
@@ -708,11 +716,11 @@ export default function HomePage() {
 
               <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4">
                 <p className="text-xs text-slate-400">
-                  Ready to register a Junior or Senior Secondary learner? Start with a Parent or School account.
+                  Want to test the full experience with sample learners? Open the interactive demo.
                 </p>
                 <div className="flex gap-2.5">
-                  <Link href="/auth?mode=signup&role=PARENT" onClick={() => setCinemaModalOpen(false)}>
-                    <Button size="sm">Register as Parent / School</Button>
+                  <Link href="/demo" onClick={() => setCinemaModalOpen(false)}>
+                    <Button size="sm">Open Interactive Demo</Button>
                   </Link>
                 </div>
               </div>

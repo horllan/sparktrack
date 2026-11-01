@@ -8,9 +8,7 @@ import {
   Building2,
   CheckCircle2,
   FileText,
-  Globe,
   HeartHandshake,
-  Lock,
   Scale,
   ShieldCheck,
   Badge,
@@ -42,47 +40,46 @@ const LEGAL_DOCUMENTS: LegalDocument[] = [
   {
     id: 'privacy',
     shortLabel: '1. Privacy Policy',
-    title: 'Global & Regional Privacy Policy (NDPA 2023 • POPIA • GDPR • COPPA)',
+    title: 'Privacy Policy',
     subtitle:
-      'How SparkTrack collects, protects, and processes personal data across Nigeria, Africa, and international jurisdictions.',
+      'How SparkTrack collects, protects, and uses personal information for learners, families, and schools.',
     effectiveDate: 'October 25, 2026',
     jurisdictions: [
-      'Nigeria NDPA 2023 & NDPC GAID',
-      'South Africa POPIA & Kenya DPA',
-      'EU / UK GDPR (Art. 8)',
-      'US COPPA & FERPA',
+      'Nigeria NDPA 2023',
+      'African Data Protection Standards',
+      'GDPR & Children’s Privacy',
     ],
     sections: [
       {
-        heading: '1.1 Scope & Multi-Jurisdictional Commitment',
-        body: 'SparkTrack Intelligence ("SparkTrack", "we", "our") operates a Longitudinal Youth Capability & Future Pathways Intelligence Platform designed first for Nigeria, scaling across Africa and globally. Because our platform serves Junior and Senior Secondary learners (ages 10–18) alongside parents, mentors, and schools, we apply the strictest child-data protection standard across all operating jurisdictions.',
+        heading: '1.1 Who We Serve & Our Privacy Commitment',
+        body: 'SparkTrack helps learners build practical skills and project portfolios from secondary school (JSS1 and above) through university, NYSC, and career transitions. Because many of our users are under 18, we apply strict child-privacy safeguards by default.',
         bullets: [
-          'Nigeria: Full compliance with the Nigeria Data Protection Act (NDPA) 2023 (Sections 24–38, Section 31 on Children, Sections 41–43 on Cross-Border Transfers) and the Child’s Rights Act (CRA) 2003.',
-          'Pan-Africa: Aligned with the AU Malabo Convention, South Africa POPIA (Sections 34–35 requiring prior consent of a competent person), Kenya Data Protection Act 2019 (Section 33), Ghana Act 843, and Rwanda Law No. 058/2021.',
-          'International: Compliant with EU/UK GDPR (Article 8 & UK Age-Appropriate Design Code / Children’s Code) and US COPPA / FERPA.',
+          'Nigeria: Designed in line with the Nigeria Data Protection Act (NDPA) 2023 and the Child’s Rights Act 2003.',
+          'Africa & International: Aligned with regional and international child data protection standards, including POPIA, Kenya DPA, GDPR, and COPPA.',
         ],
       },
       {
-        heading: '1.2 Categories of Personal Data We Collect',
-        body: 'We adhere strictly to data minimization—collecting only what is required to verify guardian consent, record learning projects, and synthesize longitudinal skill reports:',
+        heading: '1.2 Information We Collect',
+        body: 'We collect only the information needed to run your account, record learning projects, and prepare progress reports:',
         bullets: [
-          'Parent / Guardian & Institutional Account Data: Full name, email address, phone number (for SMS OTP verification), role, and school/organisation affiliation.',
-          'Learner Profile Data: Full name, date of birth, education stage (e.g., Primary 5–6, JSS1–SS3), school affiliation, and self-declared curiosity areas.',
-          'Learning Evidence & Mentor Signals: Project titles, descriptions, external links, uploaded media keys, self-tagged skills, mentor rubric quality scores, and 1–4 behavioural signal observations.',
-          'Zero Behavioural Advertising: SparkTrack never sells student data, never builds advertising profiles on minors, and disables camera, microphone, and geolocation tracking by default via HTTP Permissions-Policy headers.',
+          'Parent, Mentor & School Accounts: Name, email address, phone number, role, and school or organisation name.',
+          'Learner Profiles: Name, learning stage, goals, and chosen interests. Date of birth and parent contact details are required for learners under 18.',
+          'Communication Preferences: Adults and verified parents can choose whether to receive optional learning reminders on WhatsApp.',
+          'Projects & Mentor Feedback: Project titles, descriptions, links, attached files, skills practiced, and mentor review notes.',
+          'No Advertising Profiles: We never sell learner data or use student information for targeted advertising.',
         ],
       },
       {
-        heading: '1.3 Lawful Basis & Verifiable Parental Consent',
-        body: 'For any minor learner profile, processing of learning evidence is gated by Verifiable Parental/Guardian Consent (NDPA Section 31; GDPR Article 8; POPIA Section 35; COPPA). Every new learner profile defaults to PENDING_PARENTAL_CONSENT with all external sharing flags set to FALSE until a verified parent/guardian activates consent via our 6-digit HMAC-SHA256 SMS OTP challenge or direct Parent Hub registration.',
+        heading: '1.3 Parent Approval for Learners Under 18',
+        body: 'Every profile for a learner under 18 starts as private by default. No project work is shared publicly unless a verified parent or legal guardian approves the profile and explicitly turns on portfolio sharing.',
       },
       {
-        heading: '1.4 Data Subject Rights & How to Exercise Them',
-        body: 'Parents, guardians, learners, and institutional controllers have the right to:',
+        heading: '1.4 Your Privacy Rights',
+        body: 'Parents, guardians, adult learners, and schools can exercise these rights at any time:',
         bullets: [
-          'Right to Access & Data Portability: Inspect all recorded artifacts, bitemporal skill scores, and 13-part development reports in real time.',
-          'Right to Withdraw Consent Instantly: Toggle off public portfolio visibility, disable partner talent discovery, or revoke consent entirely (ConsentStatus = REVOKED) in one click inside the Parent Hub (/parent/dashboard).',
-          'Right to Rectification & Erasure ("Right to be Forgotten"): Submit a DPO request via /contact?category=PRIVACY_DPO_REQUEST to scrub personal identifiers from core.users and core.learner_profiles within 72 hours.',
+          'View Your Data: Access all saved projects, skill scores, and progress reports from your dashboard.',
+          'Change Sharing Settings: Turn public portfolio sharing or partner discovery on or off at any time in the Family Hub.',
+          'Request Account Deletion: Contact our Privacy Team to delete personal profile details and uploaded files within 72 hours.',
         ],
       },
     ],
@@ -90,150 +87,146 @@ const LEGAL_DOCUMENTS: LegalDocument[] = [
   {
     id: 'terms',
     shortLabel: '2. Terms of Service',
-    title: 'Terms of Service, Role Obligations & Acceptable Use Policy',
-    subtitle: 'Governing agreement for Parents/Guardians, Schools, Partner Organisations, Mentors, and Learners.',
+    title: 'Terms of Service & Acceptable Use',
+    subtitle: 'Guidelines for parents, schools, partner organisations, mentors, and learners.',
     effectiveDate: 'October 25, 2026',
-    jurisdictions: ['Nigeria FCCPC & Contract Law', 'Pan-African Commercial Standards', 'Global SaaS Terms'],
+    jurisdictions: ['Consumer Protection Standards', 'Educational Service Terms'],
     sections: [
       {
-        heading: '2.1 Account Registration & Role Eligibility',
-        body: 'SparkTrack provides role-specific workspaces governed by strict access controls:',
+        heading: '2.1 Account Roles & Eligibility',
+        body: 'Each workspace on SparkTrack is designed for a specific role:',
         bullets: [
-          'Junior & Senior Secondary Students (JSS1–SS3): Must be registered by a Parent/Legal Guardian (/auth?role=PARENT) or an authorised School/Organisation (/auth?role=SCHOOL_ADMIN), or complete Guardian SMS OTP verification before syncing evidence.',
-          'Parents & Legal Guardians: Warrant that they hold legal parental responsibility for any minor they register or approve.',
-          'Schools, NGOs & Training Partners: Warrant that they have institutional authority to onboard students and provide accurate parent/guardian contact details for NDPA consent.',
-          'Mentors & Educators: Must adhere to the SparkTrack Mentor Safeguarding Code of Conduct and provide objective, constructive rubric verification.',
+          'Learners Under 18: Must link a parent or guardian to approve their profile before project records are shared.',
+          'Parents & Legal Guardians: Confirm they have parental responsibility for any child they register or approve.',
+          'Schools & Partner Organisations: Confirm they have authority to register students and provide accurate parent contact details.',
+          'Mentors & Educators: Agree to provide fair, constructive, and respectful project reviews.',
         ],
       },
       {
-        heading: '2.2 Intellectual Property Ownership of Student Projects',
-        body: 'Learners and their families retain 100% copyright and intellectual property ownership over all projects, source code, robotics designs, essays, videos, and business concepts submitted to SparkTrack. By submitting an artifact, you grant SparkTrack a non-exclusive, revocable license solely to store, cryptographically seal, display to authorised mentors/family members, and compute capability progression.',
+        heading: '2.2 Ownership of Student Work',
+        body: 'Learners and their families keep 100% ownership of all projects, code, designs, essays, videos, and business ideas uploaded to SparkTrack. We only store and display your work to your approved mentors, family members, and any public portfolio view you choose to enable.',
       },
       {
-        heading: '2.3 Programme Cohort Billing, Scholarships & Refunds',
-        body: 'SparkTrack supports Free Pilots, Sponsored Scholarships, Paystack (NGN), and Stripe (USD/Global) for Holiday Camps, School Term Co-Curricular cohorts, and Weekend Workshops:',
+        heading: '2.3 Programme Enrolments, Scholarships & Refunds',
+        body: 'SparkTrack supports free school programmes, sponsored scholarships, and paid training cohorts:',
         bullets: [
-          'Webhook-Verified Activation: Paid enrolments transition from PENDING_PAYMENT to ACTIVE automatically upon cryptographic webhook verification.',
-          '14-Day Refund Guarantee: In accordance with the Nigerian Federal Competition and Consumer Protection Act (FCCPC) and international consumer standards, families may request a full refund within 14 days of cohort enrolment prior to programme completion.',
-          'Scholarship Protection: Learners on Sponsored Scholarships are never charged fees or asked for payment credentials.',
+          'Clear Confirmation: Paid cohort seats are activated as soon as payment is confirmed.',
+          '14-Day Refund Policy: Families may request a full refund within 14 days of enrolling in a paid cohort before the programme ends.',
+          'Scholarship Seats: Learners on sponsored scholarships are never charged fees.',
         ],
       },
       {
-        heading: '2.4 Acceptable Use & Platform Integrity',
-        body: 'Users must not upload unlawful, plagiarized, or harmful content; attempt to bypass role-based access guards; or attempt to alter records in the append-only cryptographic evidence ledger.',
+        heading: '2.4 Acceptable Use',
+        body: 'Users agree to upload only their own honest work, treat learners and mentors with respect, and never attempt to access another person’s account.',
       },
     ],
   },
   {
     id: 'child-safety',
-    shortLabel: '3. Child Safety Charter',
-    title: 'Child Protection, Safeguarding & Guardian Consent Policy',
-    subtitle:
-      'Built on the Nigerian Child’s Rights Act 2003, the African Charter on the Rights and Welfare of the Child (ACRWC), and the UK Children’s Code.',
+    shortLabel: '3. Child Safety Policy',
+    title: 'Child Safety & Parent Consent Policy',
+    subtitle: 'How we protect learners under 18 across every workspace.',
     effectiveDate: 'October 25, 2026',
-    jurisdictions: ['Child’s Rights Act 2003 (Nigeria)', 'AU ACRWC', 'UK Children’s Code', 'UNICEF Child Safeguarding'],
+    jurisdictions: ['Child’s Rights Act', 'Age-Appropriate Design Standards'],
     sections: [
       {
-        heading: '3.1 Privacy-by-Default for Every Minor',
-        body: 'No minor profile on SparkTrack is ever publicly visible by default. At database creation, every learner record enforces three mandatory locks:',
+        heading: '3.1 Private by Default',
+        body: 'No child’s profile is ever public by default. When a new profile is created for a learner under 18:',
         bullets: [
-          'consent_status = PENDING_PARENTAL_CONSENT (blocks evidence ingestion until guardian verification)',
-          'allow_public_portfolio = FALSE (blocks public portfolio access at /v1/learning/portfolio/:learnerId)',
-          'allow_partner_talent_discovery = FALSE (excludes the minor from institutional talent discovery pools)',
+          'Parent consent is required before full portfolio sharing is enabled.',
+          'Public portfolio visibility is turned off by default.',
+          'Partner talent discovery is turned off by default.',
         ],
       },
       {
-        heading: '3.2 Data Minimization in Public & Partner Views',
-        body: 'Even when a verified parent/guardian explicitly enables Public Portfolio Sharing or Partner Talent Discovery:',
+        heading: '3.2 Minimal Information on Public Portfolios',
+        body: 'If a parent chooses to share their child’s portfolio publicly:',
         bullets: [
-          'Public portfolios display only the learner’s first name and education stage (e.g., "Tobi (JSS3)")—never their home address, phone number, email, or full date of birth.',
-          'Parents can revoke public or partner visibility in real time with zero delay.',
+          'Only the learner’s display name, class stage, skills, and verified projects are shown—never their home address, phone number, email, or date of birth.',
+          'Parents can turn off public sharing at any time with immediate effect.',
         ],
       },
       {
-        heading: '3.3 Mentor Safeguarding & Interaction Boundaries',
-        body: 'SparkTrack eliminates unmonitored 1-on-1 private chat between adults and minors. Mentor interaction is strictly limited to structured rubric quality scoring and curriculum-aligned behavioural signal observations visible to the learner’s parent/guardian and school administrator.',
+        heading: '3.3 Safe Mentor Reviews',
+        body: 'SparkTrack does not allow private 1-on-1 messaging between adults and minors. Mentors interact only through structured project feedback that is visible to the learner’s parent and school.',
       },
     ],
   },
   {
     id: 'ai-charter',
-    shortLabel: '4. AI Ethics Charter',
-    title: 'AI Ethics, UNESCO/UNICEF Child AI & Non-Deterministic Guidance Charter',
-    subtitle: 'Why SparkTrack bans deterministic career labels and enforces dual-layer AI guardrails for youth.',
+    shortLabel: '4. Guidance Principles',
+    title: 'Fair Guidance & Reporting Principles',
+    subtitle: 'Why our progress reports focus on exploration and growth rather than fixed labels.',
     effectiveDate: 'October 25, 2026',
-    jurisdictions: ['UNESCO AI Ethics', 'UNICEF AI for Children', 'EU AI Act (Educational AI)', 'NITDA / NDPC AI Guidance'],
+    jurisdictions: ['Responsible Educational Guidance', 'Child-Friendly Reporting'],
     sections: [
       {
-        heading: '4.1 Exploration Over Predetermination',
-        body: 'A 12- or 15-year-old is still discovering who they are. Traditional aptitude tests often assign rigid labels that limit a young person’s confidence. SparkTrack’s 6 intelligence engines are mathematically and ethically designed to treat every capability score and pathway affinity as an evolving, time-bound signal—never a fixed destiny.',
+        heading: '4.1 Exploration Over Fixed Labels',
+        body: 'Young learners are still discovering what they enjoy and do well. SparkTrack treats every skill score and career suggestion as a starting point for exploration—never a fixed prediction of what someone can or cannot become.',
       },
       {
-        heading: '4.2 Automated Dual-Layer AI Guardrail Verification',
-        body: 'Every 13-Part Longitudinal Development Report generated by our Recommendation Synthesis Engine passes through an automated Guardrail Verifier before it can be saved or shown to a family:',
+        heading: '4.2 Encouraging, Growth-Focused Language',
+        body: 'Every 13-part progress report is checked before it is shown to a learner or family:',
         bullets: [
-          'Prohibited Deterministic Language: Phrases such as "must become", "is destined for", "only suited for", "cannot succeed in", "fixed talent", or "permanent career" trigger an automatic guardrail rejection.',
-          'Mandatory Exploratory Framing: Reports must use growth-oriented, exploratory framing ("shows emerging affinity for", "could explore", "building momentum in").',
-          'Transparent Audit Badge: Every report displays its live Child-Safety Guardrail Verification status and count of exploratory signals.',
+          'No Limiting Labels: Reports never tell a learner they are only suited for one path.',
+          'Practical Next Steps: Suggestions focus on skills to practice and projects to try next.',
         ],
       },
       {
-        heading: '4.3 Human-in-the-Loop Verification & Zero PII to LLMs',
-        body: 'AI never grades student character in isolation. Skill scores are grounded in human mentor rubric verification (1.35× verified weight) and transparent logarithmic saturation math. Furthermore, when narrative synthesis is invoked, student contact PII (phone numbers, emails, surnames) is never transmitted to external language models.',
+        heading: '4.3 Grounded in Real Human Feedback',
+        body: 'Skill progress is based on real projects reviewed by teachers and mentors—not automated guessing. Personal contact details are never shared with external services.',
       },
     ],
   },
   {
     id: 'dpa',
-    shortLabel: '5. School & NGO DPA',
-    title: 'Institutional Data Processing Agreement (DPA) for Schools, Ministries & NGOs',
-    subtitle: 'Standard enterprise data protection addendum for secondary schools, foundations, and government programmes.',
+    shortLabel: '5. School Data Agreement',
+    title: 'Data Protection Agreement for Schools & Partners',
+    subtitle: 'How we handle student data on behalf of partner schools, foundations, and youth programmes.',
     effectiveDate: 'October 25, 2026',
-    jurisdictions: ['NDPA 2023 Controller-Processor', 'GDPR Art. 28 & SCCs', 'POPIA Operator Agreement', 'US FERPA'],
+    jurisdictions: ['NDPA 2023', 'Institutional Data Protection'],
     sections: [
       {
-        heading: '5.1 Institutional Controller & Processor Responsibilities',
-        body: 'When a School, School Network, NGO, or Government Ministry ("Institutional Controller") onboards cohorts onto SparkTrack ("Data Processor" / "Operator"):',
+        heading: '5.1 School & Platform Responsibilities',
+        body: 'When a school or youth organisation uses SparkTrack to run student cohorts:',
         bullets: [
-          'SparkTrack processes institutional learner data solely on documented instructions from the School/Organisation and within the bounds of verified parental consent.',
-          'PostgreSQL Row-Level Security (RLS) isolates access so School Administrators and Mentors can only access learners enrolled in their authorised cohorts or institution (core.fn_can_access_learner).',
+          'SparkTrack processes student records only to deliver the learning programme and progress reports.',
+          'Strict access controls ensure school staff and mentors can only view learners enrolled in their own institution or cohort.',
         ],
       },
       {
-        heading: '5.2 Technical & Organisational Security Measures (TOMs)',
-        body: 'SparkTrack maintains enterprise-grade security across its stack:',
+        heading: '5.2 Security Protections',
+        body: 'We protect school and family records at every layer:',
         bullets: [
-          'Encryption: TLS 1.3 encryption in transit and AES-256 encryption at rest across database and object storage.',
-          'Cryptographic Integrity: Append-only SHA-256 hash chain (evidence.cryptographic_ledger) audited continuously via GET /api/health.',
-          'Access Control: JWT verification (JWKS / HS256), role-based endpoint guards (@Roles), and object-level RLS.',
+          'Encrypted Connections & Storage: All data is encrypted in transit and at rest.',
+          'Tamper-Evident Records: Verified project records are protected against unauthorized edits.',
+          'Role-Based Access: Every workspace requires sign-in and role verification.',
         ],
       },
       {
-        heading: '5.3 Authorised Sub-Processors & 72-Hour Breach Notification',
-        body: 'SparkTrack uses vetted enterprise infrastructure sub-processors: Supabase/AWS (PostgreSQL 17 & Auth), Cloudflare R2 (Artifact Object Storage), Termii (Transactional SMS OTP), and Paystack/Stripe (PCI-DSS Level 1 Billing). In the event of a confirmed personal data breach, SparkTrack notifies the Institutional Controller and relevant Data Protection Authority (e.g., NDPC Nigeria) within 72 hours.',
+        heading: '5.3 Incident Notification',
+        body: 'If a security incident ever affects school or family data, SparkTrack notifies the partner institution and relevant authorities within 72 hours.',
       },
     ],
   },
   {
     id: 'ledger-governance',
-    shortLabel: '6. Ledger & Erasure',
-    title: 'Cryptographic Ledger Governance & Right-to-Erasure Protocol',
-    subtitle:
-      'How SparkTrack reconciles immutable SHA-256 evidence proofs with NDPA Section 34 and GDPR Article 17 Right to Erasure.',
+    shortLabel: '6. Data Deletion & Records',
+    title: 'Portfolio Verification & Account Deletion',
+    subtitle: 'How we verify authentic student work while respecting your right to delete personal data.',
     effectiveDate: 'October 25, 2026',
-    jurisdictions: ['NDPA Sec. 34 (Right to Erasure)', 'GDPR Art. 17', 'ISO/IEC 27701 Privacy Engineering'],
+    jurisdictions: ['Right to Erasure', 'Privacy by Design'],
     sections: [
       {
-        heading: '6.1 The Immutability vs. Erasure Engineering Challenge',
-        body: 'SparkTrack seals every student project into an append-only PostgreSQL ledger (evidence.cryptographic_ledger) where UPDATE, DELETE, and TRUNCATE operations are blocked by database triggers to prevent credential forgery. At the same time, data protection laws (NDPA Section 34; GDPR Article 17; POPIA Section 24) grant parents and learners the legal right to request deletion of their personal data.',
+        heading: '6.1 Keeping Project Proof Authentic',
+        body: 'When a learner completes a project and a mentor reviews it, SparkTrack creates a digital verification stamp so schools, employers, or scholarship boards can confirm the work is genuine.',
       },
       {
-        heading: '6.2 Cryptographic Pseudonymization & PII Separation',
-        body: 'SparkTrack resolves this through strict architectural separation between Identity Tables and the Cryptographic Ledger:',
+        heading: '6.2 How Account Deletion Works',
+        body: 'We keep personal identity details separate from verification stamps so you always stay in control of your data:',
         bullets: [
-          'Zero PII in the Ledger: evidence.cryptographic_ledger stores only artifact_id (UUID), learner_id (UUID), payload_canonical_hash (one-way SHA-256 hex), previous_ledger_hash, and row_signature_hash. No names, emails, phone numbers, or raw project files ever enter the ledger table.',
-          'De-Identification on Erasure Request: When a verified parent/guardian submits an Erasure Request to our DPO, SparkTrack scrubs all personal identifiers in core.users and core.learner_profiles and purges media objects from Cloudflare R2.',
-          'Chain Continuity Preserved: Because the remaining ledger row contains only an unlinked UUID and irreversible SHA-256 hash, it is legally and mathematically anonymized while preserving chain verification (ledgerQueries.verifyChain) for all other learners.',
+          'No Personal Details in Verification Stamps: Verification stamps never contain names, emails, phone numbers, or project files.',
+          'Complete Removal on Request: When a parent or adult learner requests account deletion, we remove their personal profile details and uploaded files.',
         ],
       },
     ],
@@ -262,22 +255,21 @@ function LegalCenterContent() {
             <div className="space-y-3">
               <div className="inline-flex items-center gap-2 rounded-full border border-cyan-400/30 bg-cyan-400/10 px-3 py-1 text-xs font-bold text-cyan-300">
                 <Scale className="h-3.5 w-3.5" />
-                <span>Enterprise Legal, Privacy &amp; Child-Safety Trust Center</span>
+                <span>Privacy, Safety &amp; Terms</span>
               </div>
               <h1 className="text-2xl font-extrabold tracking-tight sm:text-4xl">
-                Built for Nigeria, Africa, and Global Compliance.
+                Clear rules that protect every learner.
               </h1>
-              <p className="max-w-2xl text-sm leading-6 text-blue-100/85">
-                Transparent governance across the <strong>Nigeria Data Protection Act (NDPA) 2023</strong>,{' '}
-                <strong>Child’s Rights Act 2003</strong>, <strong>AU / South Africa POPIA / Kenya DPA</strong>,{' '}
-                <strong>EU/UK GDPR</strong>, <strong>US COPPA/FERPA</strong>, and <strong>UNESCO Child AI Ethics</strong>.
+              <p className="max-w-2xl text-sm leading-relaxed text-blue-100/85">
+                Read how we protect student privacy, support parent consent, and partner with schools across Nigeria and
+                internationally.
               </p>
             </div>
 
             <div className="flex flex-col gap-2.5 sm:flex-row lg:flex-col">
               <Link href="/contact?category=PRIVACY_DPO_REQUEST">
                 <Button className="w-full bg-cyan-300 text-[#0e1b38] hover:bg-cyan-200">
-                  <ShieldCheck className="mr-1.5 h-4 w-4" /> Contact Data Protection Officer
+                  <ShieldCheck className="mr-1.5 h-4 w-4" /> Contact Privacy Team
                 </Button>
               </Link>
               <Link href="/parent/consent">
@@ -285,23 +277,10 @@ function LegalCenterContent() {
                   variant="outline"
                   className="w-full border-white/25 bg-white/10 text-white hover:bg-white/20"
                 >
-                  <HeartHandshake className="mr-1.5 h-4 w-4" /> Guardian SMS Consent Portal
+                  <HeartHandshake className="mr-1.5 h-4 w-4" /> Parent SMS Code
                 </Button>
               </Link>
             </div>
-          </div>
-
-          {/* Regional Jurisdiction Pill Strip */}
-          <div className="mt-6 flex flex-wrap gap-2 border-t border-white/10 pt-5 text-xs font-semibold text-blue-100">
-            <span className="inline-flex items-center gap-1.5 rounded-xl bg-white/10 px-3 py-1.5">
-              <Globe className="h-3.5 w-3.5 text-emerald-300" /> Nigeria: NDPA 2023 &amp; CRA 2003
-            </span>
-            <span className="inline-flex items-center gap-1.5 rounded-xl bg-white/10 px-3 py-1.5">
-              <Globe className="h-3.5 w-3.5 text-cyan-300" /> Africa: AU Malabo • POPIA • Kenya DPA • Ghana Act 843
-            </span>
-            <span className="inline-flex items-center gap-1.5 rounded-xl bg-white/10 px-3 py-1.5">
-              <Lock className="h-3.5 w-3.5 text-amber-300" /> Global: EU/UK GDPR • US COPPA &amp; FERPA • UNESCO AI
-            </span>
           </div>
         </div>
 

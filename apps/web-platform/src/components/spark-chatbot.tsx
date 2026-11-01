@@ -27,17 +27,17 @@ interface ChatMessage {
 const INITIAL_MESSAGE: ChatMessage = {
   id: 'welcome',
   sender: 'bot',
-  text: 'Hi! I’m the SparkTrack Assistant. Ask me anything about registering a JSS/SSS child, NDPA 2023 & international privacy compliance, the 13-Part Development Report, school partnerships, or offline project capture.',
+  text: 'Hi! How can I help you today? You can ask about setting up a student account, parent consent, progress reports, or school partnerships.',
   links: [
-    { label: 'Register as Parent / School', href: '/auth?mode=signup&role=PARENT' },
-    { label: 'Legal & Compliance Center', href: '/legal' },
-    { label: 'Contact Human Support', href: '/contact' },
+    { label: 'Try the Product Demo', href: '/demo' },
+    { label: 'Create an Account', href: '/auth?mode=signup&role=PARENT' },
+    { label: 'Contact Support', href: '/contact' },
   ],
   followUps: [
-    'How do parents or schools register a JSS/SSS student?',
-    'How does SparkTrack comply with NDPA 2023 & GDPR?',
-    'What is in the 13-Part Development Report?',
-    'How do schools partner with SparkTrack?',
+    'How do I register a student?',
+    'How does parent consent work?',
+    'What is included in a progress report?',
+    'How can our school partner with SparkTrack?',
   ],
 };
 
@@ -45,33 +45,33 @@ function offlineFallbackAnswer(question: string): Omit<ChatMessage, 'id' | 'send
   const q = question.toLowerCase();
   if (q.includes('register') || q.includes('parent') || q.includes('child') || q.includes('jss') || q.includes('student')) {
     return {
-      text: 'Parents/Guardians and Schools register first at /auth. Once signed in, open the Parent Hub (/parent/dashboard) or School Hub (/school/dashboard) and click "Add Child / Register Student" to create a profile for JSS1–SS3 students and receive their SPK-XXXX Access Code.',
+      text: 'Learners aged 18 and above can create their own profile directly. For learners under 18, a parent or school registers them and a parent approves the profile before any project work is shared.',
       links: [
-        { label: 'Go to Registration Hub', href: '/auth?mode=signup&role=PARENT' },
-        { label: 'Open Parent Hub', href: '/parent/dashboard' },
+        { label: 'Register as a Parent', href: '/auth?mode=signup&role=PARENT' },
+        { label: 'Learner Setup', href: '/student/onboarding' },
       ],
-      followUps: ['How does NDPA parental consent work?', 'What is the 13-Part Report?'],
+      followUps: ['How does parent consent work?', 'What is included in a progress report?'],
     };
   }
   if (q.includes('ndpa') || q.includes('privacy') || q.includes('consent') || q.includes('gdpr') || q.includes('legal')) {
     return {
-      text: 'SparkTrack complies with the Nigeria Data Protection Act (NDPA) 2023, Child’s Rights Act 2003, South Africa POPIA, Kenya DPA, EU/UK GDPR, and US COPPA/FERPA. Every minor profile is private by default until a guardian verifies consent via SMS OTP or direct Parent Portal registration.',
+      text: 'Every profile for a learner under 18 is private by default. Parents choose whether a portfolio can be shared publicly and can change or withdraw permission at any time from the Family Hub.',
       links: [
-        { label: 'Open Legal & Privacy Center', href: '/legal' },
-        { label: 'Contact Data Protection Officer', href: '/contact?category=PRIVACY_DPO_REQUEST' },
+        { label: 'Privacy & Terms', href: '/legal' },
+        { label: 'Contact Privacy Team', href: '/contact?category=PRIVACY_DPO_REQUEST' },
       ],
-      followUps: ['How does Right to Erasure work with the SHA-256 ledger?', 'How do parents revoke consent?'],
+      followUps: ['How do parents withdraw consent?', 'How do I register a student?'],
     };
   }
   return {
-    text: 'SparkTrack helps Junior and Senior Secondary learners (JSS1–SS3) turn real projects into mentor-verified skills and a 13-Part Future Pathways Report. You can explore our workspaces or send a ticket to our employee support desk.',
+    text: 'SparkTrack helps learners record real projects, receive feedback from mentors, and see their strengths grow over time. You can explore a full walkthrough on the Demo page.',
     links: [
-      { label: 'Explore Role Workspaces', href: '/auth' },
-      { label: 'Contact Support & Partnerships', href: '/contact' },
+      { label: 'Open Product Demo', href: '/demo' },
+      { label: 'Contact Support', href: '/contact' },
     ],
     followUps: [
-      'How do parents or schools register a JSS/SSS student?',
-      'How does SparkTrack comply with NDPA 2023 & GDPR?',
+      'How do I register a student?',
+      'How does parent consent work?',
     ],
   };
 }
@@ -160,9 +160,9 @@ export function SparkChatbot() {
                 <Sparkles className="h-4 w-4" />
               </span>
               <div>
-                <p className="text-xs font-extrabold">SparkTrack Assistant</p>
+                <p className="text-xs font-bold">SparkTrack Help</p>
                 <p className="flex items-center gap-1 text-[11px] text-cyan-300">
-                  <ShieldCheck className="h-3 w-3" /> Platform, Onboarding &amp; NDPA Guide
+                  <ShieldCheck className="h-3 w-3" /> Quick answers &amp; support
                 </p>
               </div>
             </div>
@@ -240,7 +240,7 @@ export function SparkChatbot() {
               <Input
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Ask about registration, NDPA, reports…"
+                placeholder="Ask a question…"
                 className="h-10 text-xs sm:text-sm"
               />
               <Button type="submit" size="sm" disabled={busy || !input.trim()}>
@@ -248,13 +248,13 @@ export function SparkChatbot() {
               </Button>
             </form>
             <div className="mt-2 flex items-center justify-between px-1 text-[11px] text-slate-500">
-              <span>Need an employee or DPO?</span>
+              <span>Need to speak with our team?</span>
               <Link
                 href="/contact"
                 onClick={() => setOpen(false)}
                 className="font-bold text-spark-700 hover:underline"
               >
-                Open Contact &amp; Support Desk →
+                Contact Support →
               </Link>
             </div>
           </div>

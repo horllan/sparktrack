@@ -7,6 +7,19 @@ import { createClient } from '../../../../lib/supabase/client';
 
 const INTERESTS = ['Coding & Programming', 'Graphic Design', 'Cybersecurity', 'Robotics', 'Business & Entrepreneurship',
   'AI & Data Science', 'Video Production', 'Web Development'];
+const LEARNER_STAGES = [
+  ['SECONDARY_SCHOOL', 'Secondary school (JSS1 or above)'], ['UNIVERSITY', 'University or college'],
+  ['NYSC', 'NYSC'], ['EMPLOYED', 'Working / employed'], ['CAREER_TRANSITION', 'Changing career'],
+  ['CAREER_GROWTH', 'Growing in my current career'], ['SELF_TAUGHT', 'Learning independently'],
+  ['NO_FORMAL_EDUCATION', 'Not in formal education'], ['OTHER', 'Another stage'],
+];
+const LEARNING_GOALS = [
+  ['EXPLORE_INTERESTS', 'Discover what I enjoy and do well'], ['BUILD_PRACTICAL_SKILLS', 'Build practical skills'],
+  ['GET_FIRST_JOB', 'Prepare for my first job'], ['CHANGE_CAREER', 'Move into a different career'],
+  ['GROW_IN_CAREER', 'Improve or advance in my career'], ['START_BUSINESS', 'Start a business'],
+  ['RETURN_TO_EDUCATION', 'Return to education or training'], ['PERSONAL_GROWTH', 'Learn for personal growth'],
+  ['OTHER', 'Something else'],
+];
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
 
@@ -22,7 +35,14 @@ export default function StudentOnboardingPage() {
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [dateOfBirth, setDateOfBirth] = useState('');
-  const [educationStage, setEducationStage] = useState('');
+  const [ageGroup, setAgeGroup] = useState<'UNDER_18' | 'ADULT'>('UNDER_18');
+  const [learnerStage, setLearnerStage] = useState('SECONDARY_SCHOOL');
+  const [educationLevel, setEducationLevel] = useState('');
+  const [learningGoal, setLearningGoal] = useState('EXPLORE_INTERESTS');
+  const [currentRole, setCurrentRole] = useState('');
+  const [targetRole, setTargetRole] = useState('');
+  const [whatsappOptIn, setWhatsappOptIn] = useState(false);
+  const [whatsappPhone, setWhatsappPhone] = useState('');
   const [authMode, setAuthMode] = useState<'signup' | 'signin'>('signup');
   const [guardianName, setGuardianName] = useState('');
   const [guardianEmail, setGuardianEmail] = useState('');
@@ -62,13 +82,17 @@ export default function StudentOnboardingPage() {
 
   async function submitOnboarding() {
     const parsed = LearnerOnboardingSchema.safeParse({
-      fullName, dateOfBirth, educationStage, declaredInterests: interests,
-      guardian: {
+      fullName, ageGroup, ...(ageGroup === 'UNDER_18' && dateOfBirth ? { dateOfBirth } : {}), learnerStage,
+      ...(educationLevel ? { educationLevel } : {}), learningGoal,
+      ...(currentRole ? { currentRole } : {}), ...(targetRole ? { targetRole } : {}),
+      declaredInterests: interests, whatsappOptIn,
+      ...(whatsappOptIn && ageGroup === 'ADULT' && whatsappPhone ? { whatsappPhoneNumber: whatsappPhone } : {}),
+      ...(ageGroup === 'UNDER_18' ? { guardian: {
         fullName: guardianName,
         ...(guardianEmail ? { email: guardianEmail } : {}),
         phoneNumber: guardianPhone,
         relationship: 'PARENT',
-      },
+      } } : {}),
     });
     if (!parsed.success) {
       setError(parsed.error.issues[0]?.message ?? 'Check the onboarding details.');
@@ -90,16 +114,20 @@ export default function StudentOnboardingPage() {
       });
       if (!onboard.ok) throw new Error(await responseError(onboard));
 
-      const consent = await fetch(`${API_URL}/v1/auth/consent/request`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!consent.ok) throw new Error(await responseError(consent));
-      const consentResult = await consent.json() as { status: string };
       setStep(4);
-      setNotice(consentResult.status === 'VERIFIED_ACTIVE'
-        ? 'Your parent or guardian has already verified consent. You can now continue to SparkTrack.'
-        : 'A consent request has been sent to your parent or guardian by SMS. They can open the link in that message to respond.');
+      if (ageGroup === 'UNDER_18') {
+        const consent = await fetch(`${API_URL}/v1/auth/consent/request`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!consent.ok) throw new Error(await responseError(consent));
+        const consentResult = await consent.json() as { status: string };
+        setNotice(consentResult.status === 'VERIFIED_ACTIVE'
+          ? 'Your parent or guardian has already verified consent. You can now continue to SparkTrack.'
+          : 'A consent request has been sent to your parent or guardian by SMS. They can open the link in that message to respond.');
+      } else {
+        setNotice('Your learner space is ready. Add a project, skill, or experience whenever you are ready to begin.');
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not complete onboarding.');
     } finally {
@@ -118,12 +146,12 @@ export default function StudentOnboardingPage() {
             Start with what makes you curious.
           </h1>
           <p className="mt-4 max-w-lg text-base leading-7 text-slate-600">
-            Set up your learner space, choose a few things you’d like to explore, and invite a parent or guardian to support your journey.
+            Whether you are starting in JSS1, at university, doing NYSC, already working, changing careers, or learning without formal education, SparkTrack helps you build practical skills and proof of what you can do.
           </p>
           <div className="mt-8 space-y-3">
             {[
               { icon: Compass, title: 'Explore at your pace', text: 'Interests can change as you try new things.' },
-              { icon: ShieldCheck, title: 'Your family is part of it', text: 'A guardian reviews consent before evidence is collected.' },
+              { icon: ShieldCheck, title: 'The right support for your age', text: 'Learners under 18 invite a guardian; adult learners manage their own space.' },
               { icon: Check, title: 'Build a record of growth', text: 'Keep track of projects and skills you practice.' },
             ].map(({ icon: Icon, title, text }) => (
               <div key={title} className="flex items-start gap-3 rounded-2xl border border-slate-200/80 bg-white/80 p-4">
@@ -154,7 +182,7 @@ export default function StudentOnboardingPage() {
           </div>
           <CardTitle>{step === 4 ? 'Welcome to your SparkTrack journey' : 'Create your learner space'}</CardTitle>
           <CardDescription>
-            {step === 1 ? 'Your account and basic learner details.' : step === 2 ? 'Choose a few interests to get started.' : step === 3 ? 'Add a parent or guardian contact.' : 'We’ve sent your guardian a consent request.'}
+            {step === 1 ? 'Tell us where you are now and what you want to do next.' : step === 2 ? 'Choose a few interests to get started.' : step === 3 ? ageGroup === 'UNDER_18' ? 'Add a parent or guardian for consent.' : 'Choose how you would like SparkTrack to keep in touch.' : 'Your learner space is ready.'}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -166,15 +194,46 @@ export default function StudentOnboardingPage() {
               autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'}
               placeholder={authMode === 'signup' ? 'Password (at least 8 characters)' : 'Password'} />
             <Input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Full name" />
-            <Input value={dateOfBirth} onChange={(e) => setDateOfBirth(e.target.value)} type="date" aria-label="Date of birth" />
-            <Input value={educationStage} onChange={(e) => setEducationStage(e.target.value)} placeholder="Education stage (e.g. JSS3)" />
+            <fieldset className="space-y-2">
+              <legend className="text-sm font-semibold text-slate-800">Which age group are you in?</legend>
+              <div className="grid grid-cols-2 gap-2">
+                {([['UNDER_18', 'Under 18'], ['ADULT', '18 or older']] as const).map(([value, label]) => (
+                  <button key={value} type="button" aria-pressed={ageGroup === value} onClick={() => setAgeGroup(value)}
+                    className={`rounded-xl border p-3 text-sm font-semibold ${ageGroup === value ? 'border-spark-500 bg-spark-50 text-spark-900' : 'border-slate-200 text-slate-700'}`}>{label}</button>
+                ))}
+              </div>
+            </fieldset>
+            {ageGroup === 'UNDER_18' && <Input value={dateOfBirth} onChange={(e) => setDateOfBirth(e.target.value)} type="date" aria-label="Date of birth" />}
+            <label className="block space-y-1 text-sm font-semibold text-slate-800">Where are you in your journey?
+              <select value={learnerStage} onChange={(e) => setLearnerStage(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm font-normal">
+                {LEARNER_STAGES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+            </label>
+            {learnerStage === 'SECONDARY_SCHOOL' && (
+              <label className="block space-y-1 text-sm font-semibold text-slate-800">Current class
+                <select value={educationLevel} onChange={(e) => setEducationLevel(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm font-normal">
+                  <option value="">Choose your class</option>
+                  {['JSS1', 'JSS2', 'JSS3', 'SS1', 'SS2', 'SS3'].map((level) => <option key={level} value={level}>{level}</option>)}
+                </select>
+              </label>
+            )}
+            {learnerStage === 'UNIVERSITY' && <Input value={educationLevel} onChange={(e) => setEducationLevel(e.target.value)} placeholder="Course or year (optional)" />}
+            <label className="block space-y-1 text-sm font-semibold text-slate-800">What would you like to achieve?
+              <select value={learningGoal} onChange={(e) => setLearningGoal(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm font-normal">
+                {LEARNING_GOALS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+            </label>
+            {['EMPLOYED', 'CAREER_TRANSITION', 'CAREER_GROWTH', 'NYSC'].includes(learnerStage) && <>
+              <Input value={currentRole} onChange={(e) => setCurrentRole(e.target.value)} placeholder="What do you do now? (optional)" />
+              <Input value={targetRole} onChange={(e) => setTargetRole(e.target.value)} placeholder="What would you like to do next? (optional)" />
+            </>}
             {needsEmailConfirmation ? (
               <Button className="w-full" disabled={busy} onClick={() => void authenticate(false)}>
                 {busy ? 'Signing in…' : 'I have confirmed my email — continue'}
               </Button>
             ) : (
               <Button className="w-full" disabled={busy || !email || password.length < (authMode === 'signup' ? 8 : 1) ||
-                (authMode === 'signup' && (!fullName || !dateOfBirth || !educationStage))}
+                (authMode === 'signup' && (!fullName || (ageGroup === 'UNDER_18' && !dateOfBirth)))}
                 onClick={() => void authenticate(authMode === 'signup')}>
                 {busy ? 'Please wait…' : authMode === 'signup' ? 'Create account and continue' : 'Sign in and continue'}
               </Button>
@@ -201,7 +260,7 @@ export default function StudentOnboardingPage() {
               <Button className="flex-1" disabled={interests.length === 0} onClick={() => setStep(3)}>Continue</Button>
             </div>
           </>)}
-          {step === 3 && (<>
+          {step === 3 && ageGroup === 'UNDER_18' && (<>
             <p className="text-sm text-slate-600">A parent or guardian must review the consent request before learner evidence can be recorded.</p>
             <Input value={guardianName} onChange={(e) => setGuardianName(e.target.value)} placeholder="Guardian's full name" />
             <Input value={guardianEmail} onChange={(e) => setGuardianEmail(e.target.value)} type="email" placeholder="Guardian's email (optional)" />
@@ -213,8 +272,22 @@ export default function StudentOnboardingPage() {
               </Button>
             </div>
           </>)}
+          {step === 3 && ageGroup === 'ADULT' && (<>
+            <p className="text-sm text-slate-600">You manage your own learner space. Choose a few interests to personalize your first activities.</p>
+            <label className="flex items-start gap-3 rounded-xl border border-slate-200 p-4 text-sm text-slate-700">
+              <input type="checkbox" checked={whatsappOptIn} onChange={(e) => setWhatsappOptIn(e.target.checked)} className="mt-1" />
+              <span>I would prefer SparkTrack updates and learning reminders on WhatsApp. I can change this preference at any time.</span>
+            </label>
+            {whatsappOptIn && <Input value={whatsappPhone} onChange={(e) => setWhatsappPhone(e.target.value)} type="tel" placeholder="WhatsApp number, including country code (+234…)" />}
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setStep(2)}>Back</Button>
+              <Button className="flex-1" disabled={busy || (whatsappOptIn && whatsappPhone.trim().length < 8)} onClick={() => void submitOnboarding()}>
+                {busy ? 'Setting up…' : 'Create my learner space'}
+              </Button>
+            </div>
+          </>)}
           {step === 4 && (
-            <p className="text-sm text-slate-700">Your profile is saved. It remains pending until your parent or guardian responds to the SMS request.</p>
+            <p className="text-sm text-slate-700">{ageGroup === 'UNDER_18' ? 'Your profile is saved. It remains pending until your parent or guardian responds to the SMS request.' : 'Your profile is ready. Start with a project, a skill you want to build, or a career goal you want to explore.'}</p>
           )}
         </CardContent>
       </Card>

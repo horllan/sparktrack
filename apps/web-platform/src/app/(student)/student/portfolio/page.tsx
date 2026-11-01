@@ -1,11 +1,11 @@
 'use client';
 
 import { Suspense, useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input } from '@sparktrack/ui';
+import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, PlayCircle } from '@sparktrack/ui';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
-const DEMO_EXPLORER_ID = '11111111-1111-4111-8111-111111111113';
 
 interface PublicPortfolioResponse {
   status: 'public';
@@ -97,16 +97,12 @@ function PortfolioContent() {
               >
                 {busy ? 'Verifying…' : 'Verify Portfolio'}
               </Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  setLearnerId(DEMO_EXPLORER_ID);
-                  void loadPortfolio(DEMO_EXPLORER_ID);
-                }}
-              >
-                Demo ID
-              </Button>
+              <Link href="/demo?role=verifier">
+                <Button type="button" variant="outline">
+                  <PlayCircle size={15} className="mr-1.5" />
+                  Demo Portfolios
+                </Button>
+              </Link>
             </div>
           </div>
         </div>
@@ -114,16 +110,19 @@ function PortfolioContent() {
         {error && (
           <Card className="border-amber-300 bg-amber-50">
             <CardContent className="p-4 text-sm text-amber-900">
-              <strong>NDPA Privacy Gate Active:</strong> {error}
+              <strong>Portfolio Unavailable:</strong> {error}
             </CardContent>
           </Card>
         )}
 
         {!portfolio && !busy && !error && !learnerId && (
           <Card>
-            <CardContent className="p-5 text-sm leading-6 text-slate-600 sm:p-6">
-              Enter a learner profile ID above (or tap <strong>Demo ID</strong>) to inspect a cryptographically verified
-              portfolio. Portfolios are only visible when the family has opted into public sharing.
+            <CardContent className="p-5 text-sm leading-relaxed text-slate-600 sm:p-6">
+              Enter a learner profile ID above to view a verified public portfolio, or open the{' '}
+              <Link href="/demo?role=verifier" className="font-bold text-spark-700 underline">
+                Product Demo
+              </Link>{' '}
+              to see sample student portfolios.
             </CardContent>
           </Card>
         )}
@@ -140,7 +139,7 @@ function PortfolioContent() {
                       {portfolio.profile.declaredInterests.join(', ') || 'None'}
                     </CardDescription>
                   </div>
-                  <Badge variant="advanced">Guardian Consent Verified • Public Opt-In Active</Badge>
+                  <Badge variant="advanced">Consent Verified • Public Opt-In Active</Badge>
                 </div>
               </CardHeader>
               <CardContent>
@@ -174,7 +173,7 @@ function PortfolioContent() {
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>
                         <span className="font-semibold text-slate-900">{art.title}</span>
-                        <span className="ml-2 text-xs text-slate-500">({art.artifactType})</span>
+                        <span className="ml-2 text-xs text-slate-500">({art.artifactType.replace(/_/g, ' ').toLowerCase()})</span>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
                         {art.mentorVerified ? (

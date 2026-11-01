@@ -126,12 +126,12 @@ export default function ParentConsentPage() {
               <>
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-slate-700">
-                    Consent Request ID (auto-filled from SMS link)
+                    Request ID (filled automatically from your SMS link)
                   </label>
                   <Input
                     value={challengeId}
                     onChange={(e) => setChallengeId(e.target.value)}
-                    placeholder="Paste Challenge UUID from SMS if not auto-filled"
+                    placeholder="Enter the Request ID from your text message"
                   />
                 </div>
                 <div className="space-y-1.5">

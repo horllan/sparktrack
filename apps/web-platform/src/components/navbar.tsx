@@ -29,51 +29,53 @@ import { createClient } from '../lib/supabase/client';
 
 const ROLE_LINKS = {
   student: [
-    { href: '/student/dashboard', label: 'My Learning Hub', icon: LayoutDashboard },
-    { href: '/student/portfolio', label: 'Verified Portfolio', icon: FolderKanban },
-    { href: '/student/onboarding', label: 'Onboarding Setup', icon: Compass },
+    { href: '/student/dashboard', label: 'My Workspace', icon: LayoutDashboard },
+    { href: '/student/portfolio', label: 'Portfolio', icon: FolderKanban },
+    { href: '/student/onboarding', label: 'Profile Setup', icon: Compass },
   ],
   parent: [
-    { href: '/parent/dashboard', label: 'Family & Children Hub', icon: HeartHandshake },
-    { href: '/parent/consent', label: 'SMS Consent Code', icon: ShieldCheck },
+    { href: '/parent/dashboard', label: 'Family Hub', icon: HeartHandshake },
+    { href: '/parent/consent', label: 'SMS Consent', icon: ShieldCheck },
   ],
-  mentor: [{ href: '/mentor/dashboard', label: 'Mentor Review Studio', icon: UsersRound }],
+  mentor: [{ href: '/mentor/dashboard', label: 'Mentor Workspace', icon: UsersRound }],
   school: [
-    { href: '/school/dashboard', label: 'School & Student Insights', icon: LayoutDashboard },
+    { href: '/school/dashboard', label: 'School Overview', icon: LayoutDashboard },
     { href: '/student/portfolio', label: 'Verify Portfolio', icon: FolderKanban },
   ],
-  admin: [{ href: '/admin/dashboard', label: 'Operations Console', icon: LayoutDashboard }],
+  admin: [{ href: '/admin/dashboard', label: 'Admin Console', icon: LayoutDashboard }],
 };
 
 const PUBLIC_SPACES = [
-  { href: '/parent/dashboard', label: 'Parent & Family Hub', icon: HeartHandshake },
-  { href: '/school/dashboard', label: 'School & Partner Hub', icon: Building2 },
-  { href: '/mentor/dashboard', label: 'Mentor Studio', icon: UsersRound },
-  { href: '/student/dashboard', label: 'Student Learning Hub', icon: Compass },
-  { href: '/student/portfolio', label: 'Public Portfolio Verifier', icon: FolderKanban },
+  { href: '/demo', label: 'Product Demo', icon: PlayCircle },
+  { href: '/parent/dashboard', label: 'Parents & Guardians', icon: HeartHandshake },
+  { href: '/school/dashboard', label: 'Schools & Partners', icon: Building2 },
+  { href: '/mentor/dashboard', label: 'Mentors', icon: UsersRound },
+  { href: '/student/dashboard', label: 'Students & Learners', icon: Compass },
+  { href: '/student/portfolio', label: 'Portfolio Check', icon: FolderKanban },
 ];
 
 const MOBILE_BOTTOM_TABS = [
   { href: '/', label: 'Home', icon: Home },
+  { href: '/demo', label: 'Demo', icon: PlayCircle },
   { href: '/parent/dashboard', label: 'Family', icon: HeartHandshake },
   { href: '/student/dashboard', label: 'Learner', icon: Compass },
-  { href: '/school/dashboard', label: 'Schools', icon: Building2 },
   { href: '/auth', label: 'Account', icon: UserPlus },
 ];
 
 function getPageLabel(pathname: string): string {
-  if (pathname.startsWith('/parent/consent')) return 'Guardian SMS Consent';
-  if (pathname.startsWith('/parent')) return 'Parent & Family Hub';
-  if (pathname.startsWith('/student/portfolio')) return 'Public Portfolio Verifier';
-  if (pathname.startsWith('/student/onboarding')) return 'Learner Onboarding';
-  if (pathname.startsWith('/student')) return 'Student Learning Hub';
-  if (pathname.startsWith('/mentor')) return 'Mentor Verification Studio';
-  if (pathname.startsWith('/school')) return 'School & Partner Insights';
-  if (pathname.startsWith('/admin')) return 'Operations Console';
-  if (pathname.startsWith('/auth')) return 'Sign In & Registration';
-  if (pathname.startsWith('/legal')) return 'Legal, Privacy & Child-Safety Center';
-  if (pathname.startsWith('/contact')) return 'Contact Support & Partnerships Desk';
-  if (pathname.startsWith('/internal')) return 'Operator Access';
+  if (pathname.startsWith('/demo')) return 'Product Demo';
+  if (pathname.startsWith('/parent/consent')) return 'Parent Consent';
+  if (pathname.startsWith('/parent')) return 'Family Hub';
+  if (pathname.startsWith('/student/portfolio')) return 'Public Portfolio';
+  if (pathname.startsWith('/student/onboarding')) return 'Learner Setup';
+  if (pathname.startsWith('/student')) return 'Student Workspace';
+  if (pathname.startsWith('/mentor')) return 'Mentor Workspace';
+  if (pathname.startsWith('/school')) return 'School Overview';
+  if (pathname.startsWith('/admin')) return 'Admin Console';
+  if (pathname.startsWith('/auth')) return 'Sign In & Register';
+  if (pathname.startsWith('/legal')) return 'Privacy & Terms';
+  if (pathname.startsWith('/contact')) return 'Contact Us';
+  if (pathname.startsWith('/internal')) return 'Staff Access';
   return 'Home';
 }
 
@@ -100,14 +102,14 @@ export function Navbar() {
             : null;
 
   const links = role
-    ? ROLE_LINKS[role]
+    ? [...ROLE_LINKS[role], { href: '/demo', label: 'Demo', icon: PlayCircle }]
     : [
+        { href: '/demo', label: 'Demo', icon: PlayCircle },
         { href: '/#how-it-works', label: 'How It Works', icon: Compass },
-        { href: '/#tour', label: 'Tour', icon: PlayCircle },
         { href: '/parent/dashboard', label: 'Parents', icon: HeartHandshake },
         { href: '/school/dashboard', label: 'Schools', icon: UsersRound },
-        { href: '/legal', label: 'Legal & Privacy', icon: ShieldCheck },
-        { href: '/contact', label: 'Contact Us', icon: Activity },
+        { href: '/legal', label: 'Privacy', icon: ShieldCheck },
+        { href: '/contact', label: 'Contact', icon: Activity },
       ];
 
   useEffect(() => {
@@ -330,8 +332,8 @@ export function Navbar() {
 
         {/* Offline Banner */}
         {!online && (
-          <div className="bg-amber-50 px-4 py-1.5 text-center text-xs font-medium text-amber-950">
-            Offline mode active — projects are saved on this device and sync automatically when back online.
+          <div className="bg-amber-50 px-4 py-2 text-center text-xs font-medium text-amber-950">
+            You are offline. Your work is saved on this device and will sync when you reconnect.
           </div>
         )}
 

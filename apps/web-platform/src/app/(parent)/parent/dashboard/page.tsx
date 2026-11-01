@@ -13,6 +13,7 @@ import {
   Compass,
   HeartHandshake,
   Input,
+  PlayCircle,
   ShieldCheck,
   Sparkles,
   UserPlus,
@@ -21,7 +22,6 @@ import {
 import { createClient } from '../../../../lib/supabase/client';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
-const DEMO_EXPLORER_ID = '11111111-1111-4111-8111-111111111113';
 
 const CHILD_INTERESTS = [
   'Coding & Programming',
@@ -34,7 +34,18 @@ const CHILD_INTERESTS = [
   'Web Development',
 ];
 
-const EDUCATION_STAGES = ['Primary 5', 'Primary 6', 'JSS1', 'JSS2', 'JSS3', 'SS1', 'SS2', 'SS3'];
+const EDUCATION_STAGES = [
+  'JSS1',
+  'JSS2',
+  'JSS3',
+  'SS1',
+  'SS2',
+  'SS3',
+  'University / College',
+  'Vocational / Apprenticeship',
+  'Self-taught / no formal education',
+  'Other',
+];
 
 interface ManagedChild {
   learnerId: string;
@@ -42,6 +53,7 @@ interface ManagedChild {
   educationStage: string;
   dateOfBirth: string;
   consentStatus: string;
+  whatsappOptIn: boolean;
   declaredInterests: string[];
   schoolName: string | null;
   accessCode: string;
@@ -114,9 +126,12 @@ const REPORT_TABS: Array<{ id: ReportTab; label: string; keys: ReadonlyArray<(ty
 ];
 
 export default function ParentDashboardPage() {
-  const [learnerId, setLearnerId] = useState(DEMO_EXPLORER_ID);
+  const [learnerId, setLearnerId] = useState('');
   const [childrenList, setChildrenList] = useState<ManagedChild[]>([]);
   const [showAddChild, setShowAddChild] = useState(false);
+  const [childWhatsAppOptIn, setChildWhatsAppOptIn] = useState(false);
+  const [childWhatsAppPhone, setChildWhatsAppPhone] = useState('');
+  const [savingChildWhatsApp, setSavingChildWhatsApp] = useState(false);
 
   // Add Child Form State
   const [childName, setChildName] = useState('');
@@ -136,6 +151,7 @@ export default function ParentDashboardPage() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
+  const selectedChild = childrenList.find((child) => child.learnerId === learnerId);
 
   async function authHeaders() {
     const { data } = await createClient().auth.getSession();
@@ -160,9 +176,50 @@ export default function ParentDashboardPage() {
         }
       }
     } catch {
-      // Optional when browsing demo mode unauthenticated
+      // Optional when unauthenticated
     }
   }, []);
+
+  useEffect(() => {
+    setChildWhatsAppOptIn(selectedChild?.whatsappOptIn ?? false);
+    setChildWhatsAppPhone('');
+  }, [selectedChild?.learnerId, selectedChild?.whatsappOptIn]);
+
+  async function saveChildWhatsAppPreference() {
+    if (!selectedChild) return;
+    setSavingChildWhatsApp(true);
+    setError('');
+    setNotice('');
+    try {
+      const headers = await authHeaders();
+      const response = await fetch(`${API_URL}/v1/learning/learners/${selectedChild.learnerId}/whatsapp-preference`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({
+          optIn: childWhatsAppOptIn,
+          ...(childWhatsAppOptIn ? { phoneNumber: childWhatsAppPhone.trim() } : {}),
+        }),
+      });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as { message?: string } | null;
+        throw new Error(body?.message ?? 'Could not update the learner’s WhatsApp preference.');
+      }
+      setChildrenList((current) =>
+        current.map((child) =>
+          child.learnerId === selectedChild.learnerId ? { ...child, whatsappOptIn: childWhatsAppOptIn } : child,
+        ),
+      );
+      setNotice(
+        childWhatsAppOptIn
+          ? 'Guardian preference saved. You will be asked to confirm before SparkTrack sends WhatsApp messages.'
+          : 'WhatsApp reminders are turned off for this learner.',
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not update the WhatsApp preference.');
+    } finally {
+      setSavingChildWhatsApp(false);
+    }
+  }
 
   const loadConsentPreferences = useCallback(async (id: string) => {
     if (!id.trim()) return;
@@ -325,14 +382,20 @@ export default function ParentDashboardPage() {
               Support their growth with confidence.
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-              Register your Junior or Senior Secondary child (JSS1–SS3), control NDPA privacy choices, and explore their
-              evidence-backed 13-part development report.
+              Register an under-18 learner from JSS1 onwards, including learners outside formal education. Control NDPA
+              privacy choices and explore their evidence-backed 13-part development report.
             </p>
           </div>
           <div className="flex flex-wrap gap-2.5">
+            <Link href="/demo?role=parent">
+              <Button variant="outline">
+                <PlayCircle size={16} className="mr-2" aria-hidden="true" />
+                Interactive Demo Report
+              </Button>
+            </Link>
             <Button onClick={() => setShowAddChild((v) => !v)}>
               <UserPlus size={16} className="mr-2" aria-hidden="true" />
-              {showAddChild ? 'Close Child Form' : 'Add Child / Ward (JSS–SSS)'}
+              {showAddChild ? 'Close Learner Form' : 'Add Under-18 Learner'}
             </Button>
             <Link href="/parent/consent">
               <Button variant="outline">
@@ -388,12 +451,51 @@ export default function ParentDashboardPage() {
           </div>
         )}
 
+        {selectedChild?.consentStatus === 'VERIFIED_ACTIVE' && (
+          <Card className="border-emerald-200/80">
+            <CardHeader>
+              <CardTitle className="text-base">Keep your learner connected</CardTitle>
+              <CardDescription>
+                As their verified guardian, choose whether you prefer SparkTrack learning reminders on WhatsApp.
+                Messages require a separate confirmation before they begin.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <label className="flex items-start gap-3 text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={childWhatsAppOptIn}
+                  onChange={(event) => setChildWhatsAppOptIn(event.target.checked)}
+                  className="mt-1"
+                />
+                <span>WhatsApp is my preferred channel for updates about this learner.</span>
+              </label>
+              {childWhatsAppOptIn && (
+                <Input
+                  value={childWhatsAppPhone}
+                  onChange={(event) => setChildWhatsAppPhone(event.target.value)}
+                  type="tel"
+                  placeholder="Guardian WhatsApp number (+234…)"
+                />
+              )}
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={savingChildWhatsApp || (childWhatsAppOptIn && childWhatsAppPhone.trim().length < 8)}
+                onClick={() => void saveChildWhatsAppPreference()}
+              >
+                {savingChildWhatsApp ? 'Saving…' : 'Save guardian preference'}
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
         {/* ADD CHILD / WARD DRAWER CARD */}
         {showAddChild && (
           <Card className="border-spark-300 shadow-lg">
             <div className="h-1.5 bg-gradient-to-r from-coral-500 via-spark-600 to-cyan-500" />
             <CardHeader>
-              <CardTitle className="text-lg">Register a Child or Ward (Primary 5 – SS3)</CardTitle>
+              <CardTitle className="text-lg">Register an Under-18 Learner (JSS1 onwards)</CardTitle>
               <CardDescription>
                 Create your child’s learner profile under your guardian account. You will receive their unique Learner
                 ID and Access Code immediately.
@@ -508,7 +610,7 @@ export default function ParentDashboardPage() {
               </div>
               {consentPrefs && (
                 <Badge variant={consentPrefs.consentStatus === 'VERIFIED_ACTIVE' ? 'success' : 'warning'}>
-                  {consentPrefs.consentStatus}
+                  {consentPrefs.consentStatus === 'VERIFIED_ACTIVE' ? 'Consent Active' : 'Pending Approval'}
                 </Badge>
               )}
             </div>
@@ -571,7 +673,15 @@ export default function ParentDashboardPage() {
               </div>
             ) : (
               <p className="text-xs text-slate-500">
-                Sign in with your Parent/Guardian account at <Link href="/auth?mode=signin&role=PARENT" className="font-semibold text-spark-700 underline">/auth</Link> to manage live sharing toggles or register a child.
+                Sign in with your Parent/Guardian account at{' '}
+                <Link href="/auth?mode=signin&role=PARENT" className="font-semibold text-spark-700 underline">
+                  /auth
+                </Link>{' '}
+                to manage live sharing toggles or register a child (or preview all 4 case-study reports in the{' '}
+                <Link href="/demo?role=parent" className="font-semibold text-spark-700 underline">
+                  Interactive Demo Center
+                </Link>
+                ).
               </p>
             )}
           </CardContent>
@@ -592,13 +702,6 @@ export default function ParentDashboardPage() {
                   </CardDescription>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setLearnerId(DEMO_EXPLORER_ID)}
-                className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-spark-50 hover:text-spark-800"
-              >
-                Use 13yo Explorer Demo ID
-              </button>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -643,7 +746,7 @@ export default function ParentDashboardPage() {
             {snapshotSkills.length > 0 && (
               <div className="space-y-2 rounded-2xl bg-slate-50 p-4">
                 <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                  Historical Capability Snapshot
+                  Past Progress Snapshot
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {snapshotSkills.map((s) => (
@@ -664,18 +767,17 @@ export default function ParentDashboardPage() {
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <CardTitle className="text-xl">
-                      SparkTrack Development Report (Edition v{report.version})
+                      Progress Report
                     </CardTitle>
                     <CardDescription>
-                      Generated on {new Date(report.generatedAt).toLocaleString()} · Exploratory guidance only, never
-                      fixed labels
+                      Prepared on {new Date(report.generatedAt).toLocaleDateString()} · Practical guidance based on verified projects
                     </CardDescription>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge variant={report.guardrailResult?.passed ? 'competent' : 'destructive'}>
                       {report.guardrailResult?.passed
-                        ? `Child-Safety Verified (${report.guardrailResult.explorationLanguageCount} exploration signals)`
-                        : 'Guardrail Alert'}
+                        ? 'Child-Safe Guidance Verified'
+                        : 'Needs Review'}
                     </Badge>
                   </div>
                 </div>
