@@ -23,10 +23,14 @@ describe('cryptographic ledger immutability', () => {
 
       await onboardingQueries.onboard(db!, learnerId, {
         fullName: 'Ledger Test Learner',
+        ageGroup: 'UNDER_18',
         dateOfBirth: '2013-02-14',
-        educationStage: 'JSS3',
+        learnerStage: 'SECONDARY_SCHOOL',
+        educationLevel: 'JSS3',
+        learningGoal: 'EXPLORE_INTERESTS',
         declaredInterests: ['Graphic Design'],
         guardian: { fullName: 'Ledger Test Guardian', phoneNumber: '+2348099999999' },
+        whatsappOptIn: false,
       });
 
       const sealed = await ledgerQueries.syncAndSeal(db!, {

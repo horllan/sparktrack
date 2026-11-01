@@ -33,10 +33,14 @@ describe('Section 37: 13-Year-Old Explorer End-to-End Pipeline', () => {
       // 1. Onboard 13-year-old JSS3 learner who declares interest in Graphic Design
       const onboard = await onboardingQueries.onboard(db!, learnerId, {
         fullName: ' Explorer E2E Learner',
+        ageGroup: 'UNDER_18',
         dateOfBirth: '2013-06-15',
-        educationStage: 'JSS3',
+        learnerStage: 'SECONDARY_SCHOOL',
+        educationLevel: 'JSS3',
+        learningGoal: 'EXPLORE_INTERESTS',
         declaredInterests: ['Graphic Design'],
         guardian: { fullName: 'Explorer Guardian', phoneNumber: '+2348011112222' },
+        whatsappOptIn: false,
       });
       expect(onboard.status).toBe('created');
 

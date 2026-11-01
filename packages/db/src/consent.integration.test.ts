@@ -31,13 +31,17 @@ describe('parental consent persistence', () => {
       try {
         const onboarding = await onboardingQueries.onboard(db!, learnerId, {
           fullName: 'Consent Integration Learner',
+          ageGroup: 'UNDER_18',
           dateOfBirth: '2012-05-10',
-          educationStage: 'JSS2',
+          learnerStage: 'SECONDARY_SCHOOL',
+          educationLevel: 'JSS2',
+          learningGoal: 'EXPLORE_INTERESTS',
           declaredInterests: ['Coding'],
           guardian: { fullName: 'Consent Integration Guardian', phoneNumber: '+2348012345678' },
+          whatsappOptIn: false,
         });
         expect(onboarding.status).toBe('created');
-        if (onboarding.status !== 'created') return;
+        if (onboarding.status !== 'created' || !onboarding.guardianId) return;
         guardianId = onboarding.guardianId;
 
         const created = await consentQueries.createChallenge(db!, {

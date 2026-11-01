@@ -32,19 +32,25 @@ describe('@sparktrack/contracts', () => {
   it('validates learner onboarding with declared interests and guardian', () => {
     const parsed = LearnerOnboardingSchema.parse({
       fullName: 'Adaeze Obi',
+      ageGroup: 'UNDER_18',
       dateOfBirth: '2013-04-15',
-      educationStage: 'JSS3',
+      learnerStage: 'SECONDARY_SCHOOL',
+      educationLevel: 'JSS3',
+      learningGoal: 'EXPLORE_INTERESTS',
       declaredInterests: ['Graphic Design'],
       guardian: { fullName: 'Chinedu Obi', phoneNumber: '+2348012345678' },
     });
-    expect(parsed.guardian.relationship).toBe('PARENT');
+    expect(parsed.guardian?.relationship).toBe('PARENT');
   });
 
   it('requires an international guardian phone number', () => {
     const result = LearnerOnboardingSchema.safeParse({
       fullName: 'Adaeze Obi',
+      ageGroup: 'UNDER_18',
       dateOfBirth: '2013-04-15',
-      educationStage: 'JSS3',
+      learnerStage: 'SECONDARY_SCHOOL',
+      educationLevel: 'JSS3',
+      learningGoal: 'EXPLORE_INTERESTS',
       declaredInterests: ['Graphic Design'],
       guardian: { fullName: 'Chinedu Obi', phoneNumber: '0801 234 5678' },
     });

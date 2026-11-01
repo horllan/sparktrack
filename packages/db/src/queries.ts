@@ -1,5 +1,4 @@
-import { createHash } from 'node:crypto';
-import { timingSafeEqual } from 'node:crypto';
+import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import { sql, type Kysely } from 'kysely';
 import type { SparkTrackDatabase } from './kysely-types.js';
 
@@ -203,8 +202,12 @@ export const evidenceReadQueries = {
   },
 
   async learnerContext(db: Db, learnerId: string) {
-    const r = await sql<{ declared_interests: string[]; consent_status: string; date_of_birth: string; education_stage: string }>`
-      SELECT declared_interests, consent_status::text, date_of_birth::text, education_stage
+    const r = await sql<{
+      declared_interests: string[]; consent_status: string; date_of_birth: string | null; age_group: string;
+      education_stage: string; learner_stage: string; learning_goal: string; current_role: string | null; target_role: string | null;
+    }>`
+      SELECT declared_interests, consent_status::text, date_of_birth::text, age_group, education_stage,
+             learner_stage, learning_goal, "current_role", target_role
       FROM core.learner_profiles WHERE learner_id = ${learnerId}::uuid`.execute(db);
     return r.rows[0] ?? null;
   },
@@ -281,11 +284,18 @@ export const accessQueries = {
 export const onboardingQueries = {
   async onboard(db: Db, learnerId: string, p: {
     fullName: string;
-    dateOfBirth: string;
-    educationStage: string;
+    ageGroup: 'UNDER_18' | 'ADULT';
+    dateOfBirth?: string;
+    learnerStage: string;
+    educationLevel?: string;
+    learningGoal: string;
+    currentRole?: string;
+    targetRole?: string;
     schoolName?: string;
     declaredInterests: string[];
-    guardian: { fullName: string; email?: string; phoneNumber: string };
+    guardian?: { fullName: string; email?: string; phoneNumber: string };
+    whatsappOptIn: boolean;
+    whatsappPhoneNumber?: string;
   }) {
     return db.transaction().execute(async (trx) => {
       const existing = await sql<{ guardian_id: string }>`
@@ -302,8 +312,8 @@ export const onboardingQueries = {
       `.execute(trx);
       if (!learner.rows[0]) return { status: 'learner_account_conflict' as const };
 
-      let guardianId: string;
-      if (p.guardian.email) {
+      let guardianId: string | null = null;
+      if (p.guardian?.email) {
         const guardian = await sql<{ id: string }>`
           INSERT INTO core.users (role, full_name, email, phone_number)
           VALUES ('PARENT'::core.user_role, ${p.guardian.fullName}, ${p.guardian.email}, ${p.guardian.phoneNumber})
@@ -314,7 +324,7 @@ export const onboardingQueries = {
         `.execute(trx);
         if (!guardian.rows[0]) return { status: 'guardian_account_conflict' as const };
         guardianId = guardian.rows[0].id;
-      } else {
+      } else if (p.guardian) {
         const guardian = await sql<{ id: string }>`
           INSERT INTO core.users (role, full_name, phone_number)
           VALUES ('PARENT'::core.user_role, ${p.guardian.fullName}, ${p.guardian.phoneNumber})
@@ -323,14 +333,30 @@ export const onboardingQueries = {
         guardianId = guardian.rows[0]!.id;
       }
 
+      const adult = p.ageGroup === 'ADULT';
+      const consentStatus = adult ? 'VERIFIED_ACTIVE' : 'PENDING_PARENTAL_CONSENT';
       await sql`
         INSERT INTO core.learner_profiles
-          (learner_id, date_of_birth, education_stage, primary_guardian_id, declared_interests)
-        VALUES (${learnerId}::uuid, ${p.dateOfBirth}::date, ${p.educationStage}, ${guardianId}::uuid,
-          ${sql.val(p.declaredInterests)}::text[])
+          (learner_id, date_of_birth, age_group, education_stage, learner_stage, education_level, learning_goal,
+           "current_role", target_role, primary_guardian_id, consent_status, consent_verified_at,
+           consent_verification_method, declared_interests, whatsapp_opt_in, whatsapp_phone_number)
+        VALUES (
+          ${learnerId}::uuid, ${p.dateOfBirth ?? null}::date, ${p.ageGroup}, ${p.educationLevel ?? 'Not specified'},
+          ${p.learnerStage}, ${p.educationLevel ?? null}, ${p.learningGoal}, ${p.currentRole ?? null},
+          ${p.targetRole ?? null}, ${guardianId}::uuid, ${consentStatus}::core.consent_status,
+          ${adult ? sql`NOW()` : sql`NULL`}, ${adult ? 'ADULT_SELF_ATTESTATION' : null},
+          ${sql.val(p.declaredInterests)}::text[], ${p.whatsappOptIn},
+          ${p.whatsappOptIn ? p.whatsappPhoneNumber ?? null : null})
       `.execute(trx);
 
-      return { status: 'created' as const, guardianId };
+      if (adult && p.whatsappOptIn) {
+        await sql`
+          INSERT INTO core.messaging_preference_events (learner_id, actor_id, channel, purpose, opted_in, source)
+          VALUES (${learnerId}::uuid, ${learnerId}::uuid, 'WHATSAPP', 'LEARNING_REMINDERS', TRUE, 'LEARNER_ONBOARDING')
+        `.execute(trx);
+      }
+
+      return { status: 'created' as const, guardianId, consentStatus };
     });
   },
 
@@ -389,6 +415,11 @@ export const onboardingQueries = {
       fullName: string;
       dateOfBirth: string;
       educationStage: string;
+      learnerStage?: string;
+      educationLevel?: string;
+      learningGoal?: string;
+      currentRole?: string;
+      targetRole?: string;
       schoolName?: string;
       declaredInterests: string[];
       guardianName?: string;
@@ -454,7 +485,13 @@ export const onboardingQueries = {
         INSERT INTO core.learner_profiles (
           learner_id,
           date_of_birth,
+          age_group,
           education_stage,
+          learner_stage,
+          education_level,
+          learning_goal,
+          "current_role",
+          target_role,
           current_school_id,
           primary_guardian_id,
           consent_status,
@@ -467,7 +504,13 @@ export const onboardingQueries = {
         VALUES (
           ${learnerId}::uuid,
           ${p.dateOfBirth}::date,
+          'UNDER_18',
           ${p.educationStage.trim()},
+          ${p.learnerStage ?? (p.educationStage.toLowerCase().includes('university') ? 'UNIVERSITY' : p.educationStage.toLowerCase().includes('formal education') ? 'NO_FORMAL_EDUCATION' : 'SECONDARY_SCHOOL')},
+          ${p.educationLevel ?? p.educationStage.trim()},
+          ${p.learningGoal ?? 'EXPLORE_INTERESTS'},
+          ${p.currentRole ?? null},
+          ${p.targetRole ?? null},
           ${schoolId}::uuid,
           ${guardianId}::uuid,
           ${consentStatus}::core.consent_status,
@@ -520,6 +563,7 @@ export const onboardingQueries = {
             education_stage: string;
             date_of_birth: string;
             consent_status: string;
+            whatsapp_opt_in: boolean;
             declared_interests: string[];
             school_name: string | null;
           }>`
@@ -529,12 +573,15 @@ export const onboardingQueries = {
               lp.education_stage,
               lp.date_of_birth::text,
               lp.consent_status::text,
+              lp.whatsapp_opt_in,
               lp.declared_interests,
               o.name AS school_name
             FROM core.learner_profiles lp
             JOIN core.users u ON u.id = lp.learner_id
             LEFT JOIN core.organisations o ON o.id = lp.current_school_id
             WHERE lp.primary_guardian_id = ${actor.id}::uuid
+              AND lp.age_group = 'UNDER_18'
+              AND lp.date_of_birth > CURRENT_DATE - INTERVAL '18 years'
             ORDER BY lp.created_at DESC
           `.execute(db)
         : actor.organisationId
@@ -544,6 +591,7 @@ export const onboardingQueries = {
               education_stage: string;
               date_of_birth: string;
               consent_status: string;
+              whatsapp_opt_in: boolean;
               declared_interests: string[];
               school_name: string | null;
             }>`
@@ -553,6 +601,7 @@ export const onboardingQueries = {
                 lp.education_stage,
                 lp.date_of_birth::text,
                 lp.consent_status::text,
+                lp.whatsapp_opt_in,
                 lp.declared_interests,
                 o.name AS school_name
               FROM core.learner_profiles lp
@@ -567,6 +616,7 @@ export const onboardingQueries = {
               education_stage: string;
               date_of_birth: string;
               consent_status: string;
+              whatsapp_opt_in: boolean;
               declared_interests: string[];
               school_name: string | null;
             }>`
@@ -576,6 +626,7 @@ export const onboardingQueries = {
                 lp.education_stage,
                 lp.date_of_birth::text,
                 lp.consent_status::text,
+                lp.whatsapp_opt_in,
                 lp.declared_interests,
                 o.name AS school_name
               FROM core.learner_profiles lp
@@ -591,6 +642,7 @@ export const onboardingQueries = {
       educationStage: row.education_stage,
       dateOfBirth: row.date_of_birth,
       consentStatus: row.consent_status,
+      whatsappOptIn: row.whatsapp_opt_in,
       declaredInterests: row.declared_interests ?? [],
       schoolName: row.school_name,
       accessCode: `SPK-${row.learner_id.slice(0, 8).toUpperCase()}`,
@@ -913,6 +965,37 @@ export const consentQueries = {
 
 
 export const learningQueries = {
+  async updateWhatsAppPreference(
+    db: Db,
+    p: { learnerId: string; actorId: string; actorRole: 'LEARNER' | 'PARENT'; optIn: boolean; phoneNumber?: string },
+  ) {
+    return db.transaction().execute(async (trx) => {
+      const r = await sql<{ learner_id: string; whatsapp_opt_in: boolean }>`
+        UPDATE core.learner_profiles
+        SET whatsapp_opt_in = ${p.optIn},
+            whatsapp_phone_number = ${p.optIn ? p.phoneNumber ?? null : null},
+            updated_at = NOW()
+        WHERE learner_id = ${p.learnerId}::uuid
+          AND (
+            (${p.actorRole} = 'LEARNER' AND learner_id = ${p.actorId}::uuid
+              AND (age_group = 'ADULT' OR date_of_birth <= CURRENT_DATE - INTERVAL '18 years'))
+            OR (${p.actorRole} = 'PARENT' AND primary_guardian_id = ${p.actorId}::uuid
+              AND age_group = 'UNDER_18' AND date_of_birth > CURRENT_DATE - INTERVAL '18 years'
+              AND consent_status = 'VERIFIED_ACTIVE'::core.consent_status)
+          )
+        RETURNING learner_id, whatsapp_opt_in
+      `.execute(trx);
+      const row = r.rows[0];
+      if (!row) return { status: 'not_found_or_minor' as const };
+      await sql`
+        INSERT INTO core.messaging_preference_events (learner_id, actor_id, channel, purpose, opted_in, source)
+        VALUES (${p.learnerId}::uuid, ${p.actorId}::uuid, 'WHATSAPP', 'LEARNING_REMINDERS', ${p.optIn},
+          ${p.actorRole === 'PARENT' ? 'GUARDIAN_SETTINGS' : 'LEARNER_SETTINGS'})
+      `.execute(trx);
+      return { status: 'updated' as const, learnerId: row.learner_id, whatsappOptIn: row.whatsapp_opt_in };
+    });
+  },
+
   async skillCatalogue(db: Db) {
     const r = await sql<{ id: string; code: string; name: string; category: string | null; description: string }>`
       SELECT id, code, name, category::text, description
@@ -927,8 +1010,15 @@ export const learningQueries = {
     const r = await sql<{
       learner_id: string;
       full_name: string;
-      date_of_birth: string;
+      date_of_birth: string | null;
+      age_group: string;
       education_stage: string;
+      learner_stage: string;
+      education_level: string | null;
+      learning_goal: string;
+      current_role: string | null;
+      target_role: string | null;
+      whatsapp_opt_in: boolean;
       school_name: string | null;
       consent_status: string;
       declared_interests: string[];
@@ -940,7 +1030,15 @@ export const learningQueries = {
         lp.learner_id,
         u.full_name,
         lp.date_of_birth::text,
+        CASE WHEN lp.age_group = 'ADULT' OR lp.date_of_birth <= CURRENT_DATE - INTERVAL '18 years'
+          THEN 'ADULT' ELSE 'UNDER_18' END AS age_group,
         lp.education_stage,
+        lp.learner_stage,
+        lp.education_level,
+        lp.learning_goal,
+        lp."current_role",
+        lp.target_role,
+        lp.whatsapp_opt_in,
         org.name AS school_name,
         lp.consent_status::text,
         lp.declared_interests,
@@ -952,7 +1050,8 @@ export const learningQueries = {
       LEFT JOIN core.organisations org ON org.id = lp.current_school_id
       LEFT JOIN evidence.artifacts a ON a.learner_id = lp.learner_id
       WHERE lp.learner_id = ${learnerId}::uuid
-      GROUP BY lp.learner_id, u.full_name, lp.date_of_birth, lp.education_stage, org.name,
+      GROUP BY lp.learner_id, u.full_name, lp.date_of_birth, lp.age_group, lp.education_stage,
+               lp.learner_stage, lp.education_level, lp.learning_goal, lp."current_role", lp.target_role, lp.whatsapp_opt_in, org.name,
                lp.consent_status, lp.declared_interests, lp.allow_public_portfolio
     `.execute(db);
     const row = r.rows[0];
@@ -961,7 +1060,14 @@ export const learningQueries = {
       learnerId: row.learner_id,
       fullName: row.full_name,
       dateOfBirth: row.date_of_birth,
+      ageGroup: row.age_group,
       educationStage: row.education_stage,
+      learnerStage: row.learner_stage,
+      educationLevel: row.education_level,
+      learningGoal: row.learning_goal,
+      currentRole: row.current_role,
+      targetRole: row.target_role,
+      whatsappOptIn: row.whatsapp_opt_in,
       schoolName: row.school_name,
       consentStatus: row.consent_status,
       declaredInterests: row.declared_interests ?? [],
@@ -1367,8 +1473,38 @@ export const billingQueries = {
     },
   ) {
     return db.transaction().execute(async (trx) => {
-      const existing = await sql<{ id: string; enrolment_status: string }>`
-        SELECT id, enrolment_status::text
+      const cohortRes = await sql<{
+        id: string;
+        price_ngn: number | null;
+        price_usd: number | null;
+        max_capacity: number;
+        current_enrolment_count: number;
+        is_active: boolean;
+      }>`
+        SELECT id, price_ngn, price_usd, max_capacity, current_enrolment_count, is_active
+        FROM core.programme_cohorts
+        WHERE id = ${p.cohortId}::uuid
+        FOR UPDATE
+      `.execute(trx);
+
+      const cohort = cohortRes.rows[0];
+      if (!cohort || !cohort.is_active) {
+        return {
+          status: 'cohort_not_active' as const,
+          enrolmentId: null,
+          enrolmentStatus: null,
+          alreadyEnrolled: false,
+        };
+      }
+
+      const existing = await sql<{
+        id: string;
+        enrolment_status: string;
+        payment_reference: string | null;
+        payment_amount: number | null;
+        payment_currency: string | null;
+      }>`
+        SELECT id, enrolment_status::text, payment_reference, payment_amount, payment_currency
         FROM core.cohort_enrolments
         WHERE learner_id = ${p.learnerId}::uuid AND cohort_id = ${p.cohortId}::uuid
         FOR UPDATE
@@ -1376,11 +1512,34 @@ export const billingQueries = {
 
       if (existing.rows[0]) {
         return {
+          status: 'existing' as const,
           enrolmentId: existing.rows[0].id,
           enrolmentStatus: existing.rows[0].enrolment_status,
+          paymentReference: existing.rows[0].payment_reference,
+          paymentAmount: existing.rows[0].payment_amount,
+          paymentCurrency: existing.rows[0].payment_currency ?? 'NGN',
           alreadyEnrolled: true,
         };
       }
+
+      if (cohort.current_enrolment_count >= cohort.max_capacity) {
+        return {
+          status: 'cohort_full' as const,
+          enrolmentId: null,
+          enrolmentStatus: null,
+          alreadyEnrolled: false,
+        };
+      }
+
+      const currency = (p.paymentCurrency ?? 'NGN').toUpperCase();
+      const catalogPrice = currency === 'USD' ? cohort.price_usd : cohort.price_ngn;
+      const authoritativeAmount =
+        catalogPrice !== null && catalogPrice > 0
+          ? Math.max(catalogPrice, p.paymentAmount ?? catalogPrice)
+          : (p.paymentAmount ?? null);
+      const reference =
+        p.paymentReference?.trim() ||
+        `SPK-${p.paymentProvider.slice(0, 3)}-${randomUUID().replace(/-/g, '').slice(0, 12).toUpperCase()}`;
 
       const ins = await sql<{ id: string; enrolment_status: string }>`
         INSERT INTO core.cohort_enrolments (
@@ -1393,16 +1552,20 @@ export const billingQueries = {
           ${p.enrolledBy}::uuid,
           'PENDING_PAYMENT'::core.enrolment_status,
           ${p.paymentProvider}::core.payment_provider,
-          ${p.paymentReference ?? null},
-          ${p.paymentAmount ?? null},
-          ${p.paymentCurrency ?? 'NGN'}
+          ${reference},
+          ${authoritativeAmount},
+          ${currency}
         )
         RETURNING id, enrolment_status::text
       `.execute(trx);
 
       return {
+        status: 'created' as const,
         enrolmentId: ins.rows[0]!.id,
         enrolmentStatus: ins.rows[0]!.enrolment_status,
+        paymentReference: reference,
+        paymentAmount: authoritativeAmount,
+        paymentCurrency: currency,
         alreadyEnrolled: false,
       };
     });
@@ -1411,7 +1574,7 @@ export const billingQueries = {
   async confirmPaymentByReference(
     db: Db,
     p: {
-      paymentProvider: 'PAYSTACK' | 'STRIPE';
+      paymentProvider: 'PAYSTACK' | 'STRIPE' | 'INSTITUTIONAL_INVOICE';
       paymentReference: string;
       paymentAmount?: number;
     },
@@ -1422,8 +1585,9 @@ export const billingQueries = {
         learner_id: string;
         cohort_id: string;
         enrolment_status: string;
+        payment_amount: number | null;
       }>`
-        SELECT id, learner_id, cohort_id, enrolment_status::text
+        SELECT id, learner_id, cohort_id, enrolment_status::text, payment_amount
         FROM core.cohort_enrolments
         WHERE payment_provider = ${p.paymentProvider}::core.payment_provider
           AND payment_reference = ${p.paymentReference}
@@ -1438,6 +1602,20 @@ export const billingQueries = {
           enrolmentId: row.id,
           learnerId: row.learner_id,
           cohortId: row.cohort_id,
+        };
+      }
+
+      if (
+        row.payment_amount !== null &&
+        row.payment_amount > 0 &&
+        p.paymentAmount !== undefined &&
+        p.paymentAmount < row.payment_amount
+      ) {
+        return {
+          status: 'amount_mismatch' as const,
+          enrolmentId: row.id,
+          expectedAmount: row.payment_amount,
+          receivedAmount: p.paymentAmount,
         };
       }
 

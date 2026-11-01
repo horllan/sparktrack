@@ -8,7 +8,7 @@
 
 ## 1. Executive Regulatory Matrix (Nigeria → Africa → Global)
 
-SparkTrack is a **Longitudinal Youth Capability & Future Pathways Intelligence Platform** serving Junior and Senior Secondary learners (`Primary 5 – SS3`, ages 10–18), parents/guardians, schools, mentors, and youth development organisations. Because our core users include minors, SparkTrack enforces a **strictest-standard-wins** compliance architecture across all target jurisdictions:
+SparkTrack is a **Lifelong Capability Development & Future Pathways Platform** serving learners from JSS1 onwards, university and NYSC learners, working professionals, career changers, self-taught learners, people outside formal education, parents/guardians, schools, mentors, and youth development organisations. Additional child-data safeguards apply to learners under 18:
 
 | Jurisdiction | Governing Statutes & Frameworks | SparkTrack Technical & Legal Enforcement |
 | :--- | :--- | :--- |
@@ -27,7 +27,8 @@ SparkTrack is a **Longitudinal Youth Capability & Future Pathways Intelligence P
 
 ### 2.2 Categories of Data Collected & Purpose Limitation
 SparkTrack collects **only** data strictly necessary for longitudinal skill development:
-- **Identity & Guardian Linkage (`core.users`, `core.learner_profiles`):** Learner full name, date of birth, education stage (`Primary 5 – SS3`), school affiliation, and parent/guardian name, email, and phone number.
+- **Identity & Learning Context (`core.users`, `core.learner_profiles`):** Learner full name; date of birth for under-18 learners; learning stage, education level, goals, and optionally role or school context. Guardian linkage is required for minors. Adults do not need to provide a date of birth or school.
+- **Messaging Preferences (`core.learner_profiles`):** An adult learner may record an optional WhatsApp preference and phone number. A preference alone does not authorize outbound messages; additional confirmation and a configured provider integration are required.
 - **Learning Evidence (`evidence.artifacts`):** Project titles, descriptions, external project links, R2 media keys, self-tagged skill codes, and mentor rubric quality scores.
 - **Behavioural Signal Observations (`evidence.mentor_signal_observations`):** Structured 1–4 intensity observations recorded by verified educators (e.g., *Analytical Problem Solving*, *Creative Framing*, *Persistence*).
 - **Longitudinal Capability States (`intelligence.learner_capability_temporal`):** Bitemporal skill scores (`0.0000`–`1.0000`), progression levels (`BEGINNER`, `DEVELOPING`, `COMPETENT`, `ADVANCED`), and 13-part developmental reports.
@@ -45,7 +46,7 @@ A core legal requirement under **NDPA Section 34(1)(c)** and **GDPR Article 17**
 ## 3. Terms of Service & Platform Acceptable Use Policy
 
 ### 3.1 Eligibility & Account Provisioning
-- **Junior & Senior Secondary Students (`JSS1–SS3` / Under 18):** Must be registered by a Parent/Legal Guardian (`/auth?role=PARENT`) or an authorised School/Organisation (`/auth?role=SCHOOL_ADMIN`), or complete the Guardian SMS OTP Verification flow (`/parent/consent`) before evidence can be synced.
+- **Learners Under 18, including secondary learners from JSS1:** Must provide guardian details and complete verifiable guardian consent before evidence can be processed. Adults create and manage their own learner profiles.
 - **Parents & Guardians:** Must hold legal parental responsibility for any minor they register or grant consent for.
 - **Mentors & Educators:** Must be vetted by a participating School, Partner Organisation, or SparkTrack Operations prior to being assigned to a cohort (`core.mentor_assignments`).
 

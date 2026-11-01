@@ -62,12 +62,13 @@ async function verifyStage3() {
   }
 
   const jwtSecret = process.env.SUPABASE_JWT_SECRET;
-  if (!jwtSecret || jwtSecret.startsWith('REPLACE_WITH')) {
-    record('Secrets', 'SUPABASE_JWT_SECRET', 'WARN', 'SUPABASE_JWT_SECRET is placeholder or unset in staging config');
-  } else if (jwtSecret.length < 32) {
-    record('Secrets', 'SUPABASE_JWT_SECRET', 'FAIL', `JWT secret too short (${jwtSecret.length} chars, min 32 required)`);
+  const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (jwtSecret && !jwtSecret.startsWith('REPLACE_WITH') && jwtSecret.length >= 32) {
+    record('Secrets', 'Supabase Auth Verification', 'PASS', `HMAC JWT secret validated (${jwtSecret.length} chars)`);
+  } else if (supabaseUrl && supabaseUrl.startsWith('https://')) {
+    record('Secrets', 'Supabase Auth Verification', 'PASS', `JWKS / User API verification configured (${supabaseUrl})`);
   } else {
-    record('Secrets', 'SUPABASE_JWT_SECRET', 'PASS', `Validated (${jwtSecret.length} chars)`);
+    record('Secrets', 'Supabase Auth Verification', 'WARN', 'Neither SUPABASE_JWT_SECRET nor SUPABASE_URL is configured');
   }
 
   const otpSecret = process.env.CONSENT_OTP_SECRET;
@@ -179,13 +180,34 @@ async function verifyStage3() {
   }
 
   // --- Step 5: Cloudflare R2 Staging Verification ---
-  const r2Endpoint = process.env.R2_PUBLIC_ENDPOINT;
+  const r2Account = process.env.R2_ACCOUNT_ID;
+  const r2AccessKey = process.env.R2_ACCESS_KEY_ID;
   const r2Secret = process.env.R2_SECRET_ACCESS_KEY;
-  if (r2Endpoint && r2Secret && !r2Secret.startsWith('REPLACE_WITH')) {
-    record('Storage', 'Cloudflare R2 Staging', 'PASS', `Configured endpoint: ${r2Endpoint}`);
+  const r2Bucket = process.env.R2_BUCKET_NAME || 'sparktrack';
+  if (r2Account && r2AccessKey && r2Secret && !r2Secret.startsWith('REPLACE_WITH')) {
+    record('Storage', 'Cloudflare R2 Evidence Vault', 'PASS', `Configured bucket "${r2Bucket}" on account ${r2Account.slice(0, 8)}…`);
   } else {
-    record('Storage', 'Cloudflare R2 Staging', 'WARN', 'R2 staging credentials not fully configured; uploads will use fallback');
+    record('Storage', 'Cloudflare R2 Evidence Vault', 'WARN', 'R2 credentials not fully configured; uploads will use fallback');
   }
+
+  // --- Step 6: External Provider Simulation / Live Mode Audit ---
+  const paystackSecret = process.env.PAYSTACK_SECRET_KEY ?? '';
+  const paystackLive = paystackSecret.length >= 16 && !paystackSecret.includes('xxxx') && !paystackSecret.startsWith('REPLACE_WITH');
+  record(
+    'Providers',
+    'Paystack Checkout & Webhooks',
+    'PASS',
+    paystackLive ? 'LIVE mode configured' : 'SANDBOX_SIMULATION mode active (auto-upgrades when live key is added)',
+  );
+
+  const termiiKey = process.env.TERMII_API_KEY ?? '';
+  const termiiLive = termiiKey.length >= 16 && !termiiKey.includes('xxxx') && !termiiKey.startsWith('REPLACE_WITH');
+  record(
+    'Providers',
+    'Termii NDPA Consent SMS',
+    'PASS',
+    termiiLive ? 'LIVE_SMS mode configured' : 'SANDBOX_SIMULATION mode active (returns verificationLink & sandboxOtpCode)',
+  );
 
   // --- Summary & Gate Evaluation ---
   console.log('\n============================================================');

@@ -13,9 +13,11 @@ This repository contains the complete architectural blueprint, Antigravity agent
    - `.antigravity/skills/` provides custom one-click agent skills.
 5. **Start Building with Agents:** Open `docs/ANTIGRAVITY_AGENT_PROMPTS.md` and paste **Prompt 1** into the Antigravity Agent Manager in **Planning Mode**.
 
-## Learner onboarding and guardian consent
+## Lifelong learner onboarding, guardian consent, and messaging preferences
 
-The student onboarding page requires an authenticated Supabase learner account. It creates the learner profile through the API and sends a 10-minute, single-use consent code to the guardian by Termii. The guardian opens the SMS link and records consent (or declines); learner evidence remains blocked until consent is verified. Apply database migrations with `pnpm db:migrate` before using this flow.
+SparkTrack supports learners from JSS1 onwards, university and NYSC learners, working professionals, career changers, self-taught learners, and people outside formal education. Education level and school are optional context. Adult learners can onboard without entering a date of birth or guardian contact; under-18 learners must provide a date of birth and guardian contact, then receive a 10-minute, single-use Termii SMS consent request. Evidence for minors remains blocked until consent is verified. Apply database migrations with `pnpm db:migrate` before using onboarding.
+
+Adult learners can optionally save a WhatsApp reminder preference and number. This records channel preference only; outbound WhatsApp messaging requires a configured WhatsApp Business Platform integration and an additional confirmation before messages begin. See [the WhatsApp front-door strategy](docs/SPARKTRACK_WHATSAPP_FRONT_DOOR_STRATEGY.md).
 
 ## CI and deployment stages
 

@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Inject, Module, Param, ParseUUIDPipe, Patch, Post, ServiceUnavailableException } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { LearnerOnboardingSchema, ConsentVerificationSchema } from '@sparktrack/contracts';
+import { LearnerOnboardingSchema, ConsentVerificationSchema, LearnerStageSchema, LearningGoalSchema } from '@sparktrack/contracts';
 import { ledgerQueries, type SparkTrackDatabase } from '@sparktrack/db';
 import type { Kysely } from 'kysely';
 import { z } from 'zod';
@@ -29,10 +29,24 @@ export const RegisterRoleSchema = z.object({
   phoneNumber: z.string().min(7).max(24).optional(),
 });
 
+function hasReachedAdultAge(dateOfBirth: string): boolean {
+  const birthDate = new Date(`${dateOfBirth}T00:00:00Z`);
+  const now = new Date();
+  let age = now.getUTCFullYear() - birthDate.getUTCFullYear();
+  if (now.getUTCMonth() < birthDate.getUTCMonth()
+    || (now.getUTCMonth() === birthDate.getUTCMonth() && now.getUTCDate() < birthDate.getUTCDate())) age -= 1;
+  return age >= 18;
+}
+
 const RegisterChildSchema = z.object({
   fullName: z.string().min(2).max(120),
-  dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  dateOfBirth: z.string().date(),
   educationStage: z.string().min(2).max(40),
+  learnerStage: LearnerStageSchema.optional(),
+  educationLevel: z.string().max(80).optional(),
+  learningGoal: LearningGoalSchema.optional(),
+  currentRole: z.string().max(120).optional(),
+  targetRole: z.string().max(120).optional(),
   schoolName: z.string().max(160).optional(),
   declaredInterests: z.array(z.string().min(2).max(80)).min(1).max(8),
   guardianName: z.string().min(2).max(120).optional(),
@@ -41,12 +55,16 @@ const RegisterChildSchema = z.object({
   activateConsentImmediately: z.boolean().optional(),
   allowPublicPortfolio: z.boolean().optional(),
   allowPartnerTalentDiscovery: z.boolean().optional(),
+}).superRefine((learner, ctx) => {
+  if (hasReachedAdultAge(learner.dateOfBirth)) {
+    ctx.addIssue({ code: 'custom', path: ['dateOfBirth'], message: 'Adult learners should create their own learner account.' });
+  }
 });
 
 const BootstrapAdminSchema = z.object({
   fullName: z.string().min(2).max(120),
   email: z.string().email().optional(),
-  adminSecret: z.string().min(16).max(256),
+  adminSecret: z.string().min(32).max(256),
 });
 
 export const IssueInvitationSchema = z.object({
@@ -118,7 +136,7 @@ class AuthController {
 
   @Post('children')
   @Roles('PARENT', 'SCHOOL_ADMIN', 'ORG_PARTNER', 'SUPER_ADMIN')
-  @ApiOperation({ summary: 'Register a Junior/Senior Secondary learner under a Parent or School/Organisation' })
+  @ApiOperation({ summary: 'Register an under-18 learner under a Parent or School/Organisation' })
   registerChild(@CurrentUser() user: AuthUser, @Body() body: unknown) {
     return this.auth.registerChild(user, RegisterChildSchema.parse(body));
   }
@@ -212,6 +230,22 @@ class HealthController {
       r2Storage: r2Configured ? 'configured' : 'fallback',
       ledgerBlocks: chain.length,
       ledgerIntegrityValid: true,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  /** Per-block audit detail is operator-only: it reveals ledger volume and sequence gaps. */
+  @Get('ledger')
+  @ApiBearerAuth()
+  @Roles('SUPER_ADMIN')
+  @ApiOperation({ summary: 'Operator-only per-block SHA-256 ledger audit' })
+  async ledger() {
+    const chain = await ledgerQueries.verifyChain(this.db);
+    const broken = chain.filter((b) => !b.isValid).map((b) => b.ledgerSeq);
+    return {
+      totalBlocks: chain.length,
+      ledgerIntegrityValid: broken.length === 0,
+      brokenSequences: broken,
       timestamp: new Date().toISOString(),
     };
   }

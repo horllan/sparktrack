@@ -1,6 +1,9 @@
 export {
   UserRoleSchema,
   ConsentStatusSchema,
+  LearnerStageSchema,
+  LearningGoalSchema,
+  LearnerAgeGroupSchema,
   LearnerOnboardingSchema,
   LearnerProfileResponseSchema,
   ParentalConsentRequestSchema,
@@ -9,6 +12,9 @@ export {
 export type {
   UserRole,
   ConsentStatus,
+  LearnerStage,
+  LearningGoal,
+  LearnerAgeGroup,
   LearnerOnboarding,
   LearnerProfileResponse,
   ParentalConsentRequest,

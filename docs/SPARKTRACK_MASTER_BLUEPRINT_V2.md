@@ -11,14 +11,14 @@
 ## MODULE 1: EXECUTIVE VISION, STRATEGIC PRODUCT CHARTER, MULTI-SIDED ECOSYSTEM & CORE IP FRAMEWORK
 
 ### 1.1 Executive Summary & Core Thesis
-SparkTrack is an intelligence-driven early talent development ecosystem designed to help young people discover, develop, and demonstrate their practical capabilities before career decisions become expensive or irreversible. It replaces the broken linear model (`Education -> Degree -> Graduation -> "Now what?"`) with a continuous longitudinal loop:
+SparkTrack is a lifelong capability-development ecosystem for learners from JSS1 onwards, university and NYSC learners, working professionals, career changers, self-taught learners, and people outside formal education. It helps people discover, develop, and demonstrate practical capabilities through transitions in education, work, and life. It replaces the broken linear model (`Education -> Degree -> Graduation -> "Now what?"`) with a continuous longitudinal loop:
 `Exposure -> Exploration -> Skill Development -> Project Experience -> Evidence -> Intelligence -> Direction -> Advanced Development -> Opportunity`.
 
 ### 1.2 The 10 Governing Architectural & Product Values
-1. **Early Exposure (Ages 10–17+)**
+1. **Lifelong Learning (JSS1 onwards, through adulthood)**
 2. **Exploration Before Specialisation** (`Expose broadly -> identify interests -> deepen selectively`)
 3. **Evidence Over Assumption** (*"What can you demonstrate after completing the experience?"*)
-4. **Development Over Labelling** (*Career Exploration* rather than *Career Assignment*)
+4. **Development Over Labelling** (career exploration and growth rather than fixed career assignment)
 5. **Continuous Uncertainty Reduction**
 6. **Human + Machine Intelligence** (3-minute structured mentor micro-rubrics combined with AI synthesis)
 7. **Longitudinal Continuity** (Multi-holiday and multi-year progression)

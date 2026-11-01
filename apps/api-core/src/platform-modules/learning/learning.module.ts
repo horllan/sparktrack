@@ -1,4 +1,4 @@
-import { Body, Controller, ForbiddenException, Get, Inject, Module, NotFoundException, Param, ParseUUIDPipe, Post } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, Inject, Module, NotFoundException, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { institutionQueries, learningQueries, ledgerQueries, telemetryQueries, type SparkTrackDatabase } from '@sparktrack/db';
 import type { Kysely } from 'kysely';
@@ -26,6 +26,15 @@ const RecordTelemetrySchema = z.object({
   eventType: z.string().min(2).max(80),
   durationSeconds: z.number().int().nonnegative().max(86_400).optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
+});
+
+const WhatsAppPreferenceSchema = z.object({
+  optIn: z.boolean(),
+  phoneNumber: z.string().regex(/^\+?[1-9]\d{7,14}$/).optional(),
+}).superRefine((value, ctx) => {
+  if (value.optIn && !value.phoneNumber) {
+    ctx.addIssue({ code: 'custom', path: ['phoneNumber'], message: 'A WhatsApp number is required when opting in.' });
+  }
 });
 
 @ApiTags('learning')
@@ -71,7 +80,38 @@ class LearningController {
     await this.access.assertCanAccess(user, learnerId);
     const summary = await learningQueries.learnerSummary(this.db, learnerId);
     if (!summary) throw new NotFoundException('Learner profile not found');
-    return summary;
+    if (user.role === 'LEARNER' || user.role === 'PARENT') return summary;
+    return { ...summary, dateOfBirth: null, currentRole: null, targetRole: null, whatsappOptIn: false };
+  }
+
+  @ApiBearerAuth()
+  @Patch('learners/:learnerId/whatsapp-preference')
+  @Roles('LEARNER', 'PARENT')
+  @ApiOperation({ summary: 'Update an adult learner or verified guardian’s optional WhatsApp contact preference' })
+  async updateWhatsAppPreference(
+    @CurrentUser() user: AuthUser,
+    @Param('learnerId', ParseUUIDPipe) learnerId: string,
+    @Body() body: unknown,
+  ) {
+    if (user.role !== 'LEARNER' && user.role !== 'PARENT') {
+      throw new ForbiddenException('Only an adult learner or the verified guardian of a minor can update this preference.');
+    }
+    if (user.role === 'LEARNER' && user.id !== learnerId) {
+      throw new ForbiddenException('You can only update your own messaging preference.');
+    }
+    if (user.role === 'PARENT') await this.access.assertCanAccess(user, learnerId);
+    const preference = WhatsAppPreferenceSchema.parse(body);
+    const result = await learningQueries.updateWhatsAppPreference(this.db, {
+      learnerId,
+      actorId: user.id,
+      actorRole: user.role,
+      optIn: preference.optIn,
+      phoneNumber: preference.phoneNumber,
+    });
+    if (result.status === 'not_found_or_minor') {
+      throw new ForbiddenException('Adults manage their own preference. For learners under 18, the verified guardian manages it after consent is active.');
+    }
+    return result;
   }
 
   @ApiBearerAuth()

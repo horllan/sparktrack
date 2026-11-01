@@ -9,6 +9,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -18,6 +19,7 @@ import type { ConsentVerification, LearnerOnboarding } from '@sparktrack/contrac
 import type { SparkTrackDatabase } from '@sparktrack/db';
 import { KYSELY } from '../../common/database/database.module';
 import { LearnerAccessService, type AuthUser } from '../../common/auth/auth.guard';
+import { UpstashRedisService } from '../../common/cache/upstash-redis.service';
 import { TermiiSmsService } from './termii-sms.service';
 
 const CONSENT_TTL_MS = 10 * 60_000;
@@ -31,6 +33,7 @@ export class AuthPlatformService {
     @Inject(ConfigService) private readonly config: ConfigService,
     @Inject(TermiiSmsService) private readonly sms: TermiiSmsService,
     private readonly access: LearnerAccessService,
+    @Optional() @Inject(UpstashRedisService) private readonly cache?: UpstashRedisService,
   ) {}
 
   async onboard(user: AuthUser, payload: LearnerOnboarding) {
@@ -65,18 +68,36 @@ export class AuthPlatformService {
     if (!createdChallengeId) {
       throw new HttpException('Please wait one minute before requesting another consent code.', HttpStatus.TOO_MANY_REQUESTS);
     }
+    let smsResult: Awaited<ReturnType<TermiiSmsService['sendConsentCode']>>;
     try {
-      await this.sms.sendConsentCode(recipient.phone_number, code, createdChallengeId);
+      smsResult = await this.sms.sendConsentCode(recipient.phone_number, code, createdChallengeId);
     } catch (error) {
       await consentQueries.discardChallenge(this.db, createdChallengeId);
       if (error instanceof ServiceUnavailableException) throw error;
       this.logger.error(`Consent SMS delivery failed: ${error instanceof Error ? error.message : 'unknown error'}`);
       throw new ServiceUnavailableException('The consent SMS could not be sent. Please try again.');
     }
-    return { status: 'PENDING_PARENTAL_CONSENT' as const, expiresAt: expiresAt.toISOString() };
+    return {
+      status: 'PENDING_PARENTAL_CONSENT' as const,
+      challengeId: createdChallengeId,
+      expiresAt: expiresAt.toISOString(),
+      deliveryMode: smsResult?.deliveryMode ?? ('LIVE_SMS' as const),
+      ...(smsResult?.deliveryMode === 'SANDBOX_SIMULATION'
+        ? {
+            sandboxOtpCode: code,
+            verificationLink: smsResult.verificationLink,
+          }
+        : {}),
+    };
   }
 
   async verifyConsent(payload: ConsentVerification) {
+    if (this.cache) {
+      const rl = await this.cache.checkRateLimit(`sparktrack:rl:consent-verify:${payload.challengeId}`, 10, 600);
+      if (!rl.allowed) {
+        throw new HttpException('Too many verification attempts. Please wait before trying again.', HttpStatus.TOO_MANY_REQUESTS);
+      }
+    }
     const result = await consentQueries.verify(this.db, {
       challengeId: payload.challengeId,
       otpHmac: this.hashCode(payload.challengeId, payload.otpCode),
@@ -171,6 +192,11 @@ export class AuthPlatformService {
       fullName: string;
       dateOfBirth: string;
       educationStage: string;
+      learnerStage?: string;
+      educationLevel?: string;
+      learningGoal?: string;
+      currentRole?: string;
+      targetRole?: string;
       schoolName?: string;
       declaredInterests: string[];
       guardianName?: string;
@@ -216,21 +242,27 @@ export class AuthPlatformService {
     ) {
       throw new ForbiddenException('Your account is not assigned to an organisation.');
     }
-    return onboardingQueries.listManagedLearners(this.db, user);
+    const learners = await onboardingQueries.listManagedLearners(this.db, user);
+    if (user.role === 'PARENT') return learners;
+    return learners.map((learner) => ({ ...learner, whatsappOptIn: false }));
   }
 
   async bootstrapSuperAdmin(
     user: AuthUser,
     payload: { fullName: string; email?: string; adminSecret: string },
   ) {
-    const configuredSecret =
-      this.config.get<string>('ADMIN_REGISTRATION_SECRET') ??
-      this.config.getOrThrow<string>('CONSENT_OTP_SECRET');
+    if (this.cache) {
+      const rl = await this.cache.checkRateLimit(`sparktrack:rl:admin-bootstrap:${user.id}`, 5, 900);
+      if (!rl.allowed) {
+        throw new HttpException('Too many operator bootstrap attempts. Try again in 15 minutes.', HttpStatus.TOO_MANY_REQUESTS);
+      }
+    }
 
+    const configuredSecret = this.getAdminSecret();
     const expectedBuf = Buffer.from(configuredSecret, 'utf8');
     const suppliedBuf = Buffer.from(payload.adminSecret, 'utf8');
     const isValid =
-      expectedBuf.length >= 16 &&
+      expectedBuf.length >= 32 &&
       expectedBuf.length === suppliedBuf.length &&
       timingSafeEqual(expectedBuf, suppliedBuf);
 
@@ -331,10 +363,18 @@ export class AuthPlatformService {
     return onboardingQueries.listInstitutionalAndMentorAccounts(this.db);
   }
 
+  private getAdminSecret(): string {
+    const secret = this.config.get<string>('ADMIN_REGISTRATION_SECRET')?.trim();
+    if (!secret || secret.startsWith('REPLACE_WITH') || Buffer.byteLength(secret, 'utf8') < 32) {
+      throw new ServiceUnavailableException(
+        'ADMIN_REGISTRATION_SECRET must be explicitly configured with at least 32 bytes.',
+      );
+    }
+    return secret;
+  }
+
   private signInvitation(email: string, role: string, expiresEpoch: number): string {
-    const secret =
-      this.config.get<string>('ADMIN_REGISTRATION_SECRET') ??
-      this.config.getOrThrow<string>('CONSENT_OTP_SECRET');
+    const secret = this.getAdminSecret();
     return createHmac('sha256', secret)
       .update(`invite:${email}:${role}:${expiresEpoch}`)
       .digest('hex')

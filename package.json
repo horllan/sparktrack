@@ -2,7 +2,7 @@
   "name": "sparktrack-monorepo",
   "version": "2.0.0",
   "private": true,
-  "description": "SparkTrack Early Talent Development, Career Discovery & Intelligence Platform",
+  "description": "SparkTrack Lifelong Capability Development, Career Discovery & Intelligence Platform",
   "workspaces": [
     "apps/*",
     "packages/*"

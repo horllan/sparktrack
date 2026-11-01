@@ -65,7 +65,7 @@ const KNOWLEDGE_BASE: KnowledgeTopic[] = [
   {
     keywords: ['register', 'parent', 'child', 'jss', 'sss', 'secondary', 'junior', 'onboard', 'sign up', 'signup', 'student'],
     answer:
-      'For Junior and Senior Secondary learners (Primary 5 through SS3), a Parent/Guardian or School Administrator registers first at /auth. Once signed in, open the Parent Hub (/parent/dashboard) or School Hub (/school/dashboard) and click "Add Child / Register Student" to create the student profile, choose initial curiosity areas, and generate their unique SPK-XXXX Learner Access Code.',
+      'SparkTrack is for lifelong learners: start from JSS1, university, NYSC, employment, career transition or growth, self-directed learning, or no formal education. Adults can create their own learner space at /student/onboarding. Learners under 18 need a parent or guardian to review consent before evidence can be recorded; parents and schools can also register them from their dashboards.',
     links: [
       { label: 'Register as Parent or School', href: '/auth?mode=signup&role=PARENT' },
       { label: 'Open Parent Hub', href: '/parent/dashboard' },
@@ -179,14 +179,14 @@ function answerQuestion(rawMessage: string) {
 
   return {
     reply:
-      'I am the SparkTrack Intelligence & Compliance Assistant. I can help you with Parent & School registration for Junior/Senior Secondary students (JSS1–SS3), NDPA 2023 & international child-privacy laws, the 13-Part Development Report, offline project capture, school partnerships, or connect you directly with our employee support desk.',
+      'I am the SparkTrack Intelligence & Compliance Assistant. I can help learners from JSS1 onwards, university and NYSC learners, working professionals, career changers, self-taught learners, and people outside formal education get started. I can also help with guardian consent for minors, development reports, offline project capture, and school or programme partnerships.',
     links: [
       { label: 'Get Started (Parent / School / Learner)', href: '/auth' },
       { label: 'Legal, Privacy & Compliance Center', href: '/legal' },
       { label: 'Contact Support & Partnerships Desk', href: '/contact' },
     ],
     followUps: [
-      'How do parents or schools register a JSS/SSS student?',
+      'How do I join SparkTrack at my stage of learning?',
       'How does SparkTrack comply with NDPA 2023, POPIA & GDPR?',
       'How does the 13-Part Development Report work?',
       'I want to contact a human team member',

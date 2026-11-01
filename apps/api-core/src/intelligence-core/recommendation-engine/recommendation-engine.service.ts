@@ -28,13 +28,14 @@ export const REPORT_SECTIONS = [
 
 export type ReportSectionKey = (typeof REPORT_SECTIONS)[number]['key'];
 
-const SYSTEM_PROMPT = `You write development reports about young people (ages 10-17) for parents and mentors.
+const SYSTEM_PROMPT = `You write development reports for lifelong learners across secondary school, university, NYSC, employment, career transition and growth, independent learning, and no-formal-education contexts. Reports may be read by the learner, family, mentors, or programme partners.
 HARD RULES:
 - Frame everything as career EXPLORATION and uncertainty reduction. Never assign or predict a career or identity.
 - Never write "you will become", "you should be", "your career is", "destined", "meant to", "natural", "not cut out for".
 - Treat behavioural indicators as evolving developmental signals, never permanent traits.
 - Use phrases like "current evidence shows", "growing signals", "worth exploring further", "one pathway to explore".
 - Be encouraging and specific, and mention uncertainty where evidence is limited.
+- Do not infer abilities from age, education, or employment context. Use the learner's stated goal to make next steps relevant, and keep language age-appropriate for learners under 18.
 - Use only the supplied data. Do not invent facts. Do not mention names.
 Return ONLY JSON: {"sections": {"<key>": "<narrative>", ...}} containing exactly the requested keys.`;
 
@@ -87,12 +88,20 @@ export class RecommendationEngineService {
 
   latest(learnerId: string) { return reportQueries.latest(this.db, learnerId); }
 
-  /** Data minimisation: no names, DOB or school are sent to the model, only age band and aggregates. */
-  private buildFacts(ctx: { declared_interests: string[]; date_of_birth: string; education_stage: string },
+  /** Data minimisation: omit names, DOB, and school; send learner-declared context and evidence aggregates. */
+  private buildFacts(ctx: {
+    declared_interests: string[]; date_of_birth: string | null; age_group: string; education_stage: string;
+    learner_stage: string; learning_goal: string; current_role: string | null; target_role: string | null;
+  },
     skills: ComputedSkill[], affinities: PathwayAffinity[], signals: Array<{ signal: string; averageIntensity: number; observationCount: number }>) {
-    const age = Math.floor((Date.now() - new Date(ctx.date_of_birth).getTime()) / 3.156e10);
+    const age = ctx.date_of_birth ? Math.floor((Date.now() - new Date(ctx.date_of_birth).getTime()) / 3.156e10) : null;
     return {
-      ageBand: `${Math.floor(age / 2) * 2}-${Math.floor(age / 2) * 2 + 1}`, educationStage: ctx.education_stage,
+      ageBand: ctx.age_group === 'ADULT' ? 'adult' : age === null ? 'unknown' : `${Math.floor(age / 2) * 2}-${Math.floor(age / 2) * 2 + 1}`,
+      learnerStage: ctx.learner_stage,
+      educationStage: ctx.education_stage,
+      learningGoal: ctx.learning_goal,
+      currentRole: ctx.current_role,
+      targetRole: ctx.target_role,
       declaredInterests: ctx.declared_interests,
       skills: skills.map((s) => ({ skill: s.code, level: s.progression, score: Number(s.score.toFixed(2)), evidenceCount: s.evidenceCount })),
       pathways: affinities.slice(0, 6).map((a) => ({ pathway: a.pathwayName, type: a.pathwayType, affinity: a.affinityScore,

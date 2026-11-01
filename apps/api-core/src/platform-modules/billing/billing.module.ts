@@ -1,5 +1,17 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { BadRequestException, Body, Controller, Get, Headers, Inject, Module, Post, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  ConflictException,
+  Controller,
+  ForbiddenException,
+  Get,
+  Headers,
+  Inject,
+  Module,
+  Post,
+  UnauthorizedException,
+} from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
 import { ConfigService as NestConfigService } from '@nestjs/config';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -30,15 +42,34 @@ export const EnrolLearnerSchema = z.object({
   paymentCurrency: z.string().length(3).default('NGN'),
 });
 
+export const SimulateWebhookSchema = z.object({
+  paymentProvider: z.enum(['PAYSTACK', 'STRIPE', 'INSTITUTIONAL_INVOICE']),
+  paymentReference: z.string().min(3).max(120),
+  paymentAmount: z.number().int().nonnegative().optional(),
+});
+
+export function isRealProviderSecret(secret: string | undefined): boolean {
+  if (!secret) return false;
+  const trimmed = secret.trim();
+  if (trimmed.length < 16) return false;
+  if (trimmed.includes('REPLACE_WITH') || trimmed.includes('xxxxxxxx')) return false;
+  return true;
+}
+
 export function verifyPaystackSignature(payloadJson: string, signatureHeader: string | undefined, secret: string): boolean {
-  if (!signatureHeader || !secret) return false;
+  if (!signatureHeader || !isRealProviderSecret(secret)) return false;
   const expected = createHmac('sha512', secret).update(payloadJson).digest('hex');
   if (expected.length !== signatureHeader.length) return false;
   return timingSafeEqual(Buffer.from(expected, 'utf8'), Buffer.from(signatureHeader, 'utf8'));
 }
 
-export function verifyStripeSignature(payloadJson: string, signatureHeader: string | undefined, secret: string): boolean {
-  if (!signatureHeader || !secret) return false;
+export function verifyStripeSignature(
+  payloadJson: string,
+  signatureHeader: string | undefined,
+  secret: string,
+  options?: { toleranceSeconds?: number; nowEpochSeconds?: number },
+): boolean {
+  if (!signatureHeader || !isRealProviderSecret(secret)) return false;
   const parts = Object.fromEntries(
     signatureHeader.split(',').map((item) => {
       const [k, v] = item.trim().split('=');
@@ -48,6 +79,15 @@ export function verifyStripeSignature(payloadJson: string, signatureHeader: stri
   const timestamp = parts.t;
   const v1 = parts.v1;
   if (!timestamp || !v1 || !/^\d+$/.test(timestamp)) return false;
+
+  if (options?.toleranceSeconds && options.toleranceSeconds > 0) {
+    const nowEpoch = options.nowEpochSeconds ?? Math.floor(Date.now() / 1000);
+    const tsEpoch = Number(timestamp);
+    if (!Number.isFinite(tsEpoch) || Math.abs(nowEpoch - tsEpoch) > options.toleranceSeconds) {
+      return false;
+    }
+  }
+
   const expected = createHmac('sha256', secret).update(`${timestamp}.${payloadJson}`).digest('hex');
   if (expected.length !== v1.length) return false;
   return timingSafeEqual(Buffer.from(expected, 'utf8'), Buffer.from(v1, 'utf8'));
@@ -61,6 +101,34 @@ class BillingController {
     @Inject(NestConfigService) private readonly config: ConfigService,
     private readonly access: LearnerAccessService,
   ) {}
+
+  private getStage(): string {
+    return (
+      this.config.get<string>('SPARKTRACK_STAGE') ??
+      this.config.get<string>('NODE_ENV') ??
+      'development'
+    ).toLowerCase();
+  }
+
+  @Public()
+  @Get('providers/status')
+  @ApiOperation({ summary: 'Return payment and SMS provider configuration mode (LIVE vs SANDBOX_SIMULATION)' })
+  providerStatus() {
+    const stage = this.getStage();
+    const paystackLive = isRealProviderSecret(this.config.get<string>('PAYSTACK_SECRET_KEY'));
+    const stripeLive = isRealProviderSecret(this.config.get<string>('STRIPE_WEBHOOK_SECRET'));
+    const termiiLive = isRealProviderSecret(this.config.get<string>('TERMII_API_KEY'));
+    return {
+      stage,
+      simulationAllowed: stage !== 'production',
+      providers: {
+        PAYSTACK: paystackLive ? ('LIVE' as const) : ('SANDBOX_SIMULATION' as const),
+        STRIPE: stripeLive ? ('LIVE' as const) : ('SANDBOX_SIMULATION' as const),
+        INSTITUTIONAL_INVOICE: 'MANUAL_SETTLEMENT' as const,
+        TERMII_SMS: termiiLive ? ('LIVE' as const) : ('SANDBOX_SIMULATION' as const),
+      },
+    };
+  }
 
   @Public()
   @Get('cohorts')
@@ -88,7 +156,87 @@ class BillingController {
   async enrol(@CurrentUser() user: AuthUser, @Body() body: unknown) {
     const parsed = EnrolLearnerSchema.parse(body);
     await this.access.assertCanAccess(user, parsed.learnerId);
-    return billingQueries.enrolLearner(this.db, { ...parsed, enrolledBy: user.id });
+    const result = await billingQueries.enrolLearner(this.db, { ...parsed, enrolledBy: user.id });
+    if (result.status === 'cohort_not_active') {
+      throw new ConflictException('The selected cohort is not currently active for enrolment.');
+    }
+    if (result.status === 'cohort_full') {
+      throw new ConflictException('This cohort has reached its maximum seat capacity.');
+    }
+
+    const status = this.providerStatus();
+    const checkoutMode =
+      parsed.paymentProvider === 'PAYSTACK'
+        ? status.providers.PAYSTACK
+        : parsed.paymentProvider === 'STRIPE'
+          ? status.providers.STRIPE
+          : status.providers.INSTITUTIONAL_INVOICE;
+
+    return {
+      ...result,
+      checkoutMode,
+      simulationAllowed: status.simulationAllowed,
+    };
+  }
+
+  @ApiBearerAuth()
+  @Post('simulate-webhook')
+  @Roles('PARENT', 'SCHOOL_ADMIN', 'SUPER_ADMIN')
+  @ApiOperation({
+    summary:
+      'Sandbox/Staging simulator: signs a genuine HMAC webhook payload and processes payment confirmation when live keys are not yet provisioned',
+  })
+  async simulateWebhook(@CurrentUser() user: AuthUser, @Body() body: unknown) {
+    const stage = this.getStage();
+    if (stage === 'production') {
+      throw new ForbiddenException('Sandbox payment webhook simulation is strictly disabled in production.');
+    }
+    const parsed = SimulateWebhookSchema.parse(body);
+    if (parsed.paymentProvider === 'INSTITUTIONAL_INVOICE' && user.role === 'PARENT') {
+      throw new ForbiddenException('Institutional invoice settlement requires School Admin or Super Admin authorization.');
+    }
+
+    // Exercise the exact cryptographic signature verification path using an ephemeral sandbox signing key
+    const sandboxSecret = 'spk_sandbox_ephemeral_signing_key_2026_verified';
+    let signatureVerified = false;
+    if (parsed.paymentProvider === 'PAYSTACK') {
+      const payloadJson = JSON.stringify({
+        event: 'charge.success',
+        data: { reference: parsed.paymentReference, amount: parsed.paymentAmount },
+      });
+      const sig = createHmac('sha512', sandboxSecret).update(payloadJson).digest('hex');
+      signatureVerified = verifyPaystackSignature(payloadJson, sig, sandboxSecret);
+    } else if (parsed.paymentProvider === 'STRIPE') {
+      const nowEpoch = Math.floor(Date.now() / 1000);
+      const payloadJson = JSON.stringify({
+        type: 'checkout.session.completed',
+        data: { object: { client_reference_id: parsed.paymentReference, amount_total: parsed.paymentAmount } },
+      });
+      const v1 = createHmac('sha256', sandboxSecret).update(`${nowEpoch}.${payloadJson}`).digest('hex');
+      signatureVerified = verifyStripeSignature(payloadJson, `t=${nowEpoch},v1=${v1}`, sandboxSecret, {
+        toleranceSeconds: 300,
+        nowEpochSeconds: nowEpoch,
+      });
+    } else {
+      signatureVerified = true;
+    }
+
+    if (!signatureVerified) {
+      throw new UnauthorizedException('Sandbox webhook signature self-check failed.');
+    }
+
+    const confirmation = await billingQueries.confirmPaymentByReference(this.db, {
+      paymentProvider: parsed.paymentProvider,
+      paymentReference: parsed.paymentReference,
+      paymentAmount: parsed.paymentAmount,
+    });
+
+    return {
+      simulated: true,
+      stage,
+      signatureVerified,
+      ...confirmation,
+    };
   }
 
   @Public()
@@ -124,8 +272,8 @@ class BillingController {
   ) {
     const secret = this.config.get<string>('STRIPE_WEBHOOK_SECRET') ?? '';
     const raw = JSON.stringify(body);
-    if (!verifyStripeSignature(raw, signature, secret)) {
-      throw new UnauthorizedException('Invalid Stripe webhook signature');
+    if (!verifyStripeSignature(raw, signature, secret, { toleranceSeconds: 300 })) {
+      throw new UnauthorizedException('Invalid or expired Stripe webhook signature');
     }
     const type = body.type as string | undefined;
     const obj = ((body.data as Record<string, unknown> | undefined)?.object ?? {}) as Record<string, unknown>;

@@ -65,9 +65,17 @@ export const users = coreSchema.table('users', {
 
 export const learnerProfiles = coreSchema.table('learner_profiles', {
   learnerId: uuid('learner_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
-  dateOfBirth: date('date_of_birth').notNull(),
+  dateOfBirth: date('date_of_birth'),
+  ageGroup: text('age_group').notNull().default('UNDER_18'),
   currentSchoolId: uuid('current_school_id').references(() => organisations.id),
   educationStage: text('education_stage').notNull(),
+  learnerStage: text('learner_stage').notNull().default('SECONDARY_SCHOOL'),
+  educationLevel: text('education_level'),
+  learningGoal: text('learning_goal').notNull().default('EXPLORE_INTERESTS'),
+  currentRole: text('current_role'),
+  targetRole: text('target_role'),
+  whatsappOptIn: boolean('whatsapp_opt_in').notNull().default(false),
+  whatsappPhoneNumber: text('whatsapp_phone_number'),
   primaryGuardianId: uuid('primary_guardian_id').references(() => users.id),
   consentStatus: consentStatusEnum('consent_status').notNull().default('PENDING_PARENTAL_CONSENT'),
   consentVerifiedAt: timestamp('consent_verified_at', { withTimezone: true }),
@@ -77,6 +85,17 @@ export const learnerProfiles = coreSchema.table('learner_profiles', {
   declaredInterests: text('declared_interests').array().default([]),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+export const messagingPreferenceEvents = coreSchema.table('messaging_preference_events', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  learnerId: uuid('learner_id').notNull().references(() => learnerProfiles.learnerId, { onDelete: 'cascade' }),
+  actorId: uuid('actor_id').notNull().references(() => users.id, { onDelete: 'restrict' }),
+  channel: text('channel').notNull(),
+  purpose: text('purpose').notNull(),
+  optedIn: boolean('opted_in').notNull(),
+  source: text('source').notNull(),
+  recordedAt: timestamp('recorded_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index('idx_messaging_preference_events_learner').on(t.learnerId, t.recordedAt)]);
 
 export const programmeCohorts = coreSchema.table('programme_cohorts', {
   id: uuid('id').primaryKey().defaultRandom(),
