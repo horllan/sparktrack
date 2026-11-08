@@ -81,15 +81,15 @@ function PortfolioContent() {
               This public view is available only when a guardian has verified consent and enabled portfolio sharing.
             </p>
           </div>
-          <div className="flex w-full flex-col gap-2.5 sm:w-auto sm:flex-row sm:items-center">
+          <div className="no-print flex w-full flex-col gap-2.5 sm:w-auto sm:flex-row sm:items-center">
             <Input
               className="w-full sm:w-72"
               value={learnerId}
               onChange={(e) => setLearnerId(e.target.value)}
-              aria-label="Learner profile ID"
-              placeholder="Learner profile ID"
+              aria-label="Portfolio share code or learner ID"
+              placeholder="Share code or learner ID"
             />
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Button
                 className="flex-1 sm:flex-none"
                 disabled={busy || !learnerId.trim()}
@@ -97,6 +97,11 @@ function PortfolioContent() {
               >
                 {busy ? 'Verifying…' : 'Verify Portfolio'}
               </Button>
+              {portfolio && (
+                <Button type="button" variant="outline" onClick={() => window.print()}>
+                  Print / Save PDF
+                </Button>
+              )}
               <Link href="/demo?role=verifier">
                 <Button type="button" variant="outline">
                   <PlayCircle size={15} className="mr-1.5" />
@@ -118,7 +123,7 @@ function PortfolioContent() {
         {!portfolio && !busy && !error && !learnerId && (
           <Card>
             <CardContent className="p-5 text-sm leading-relaxed text-slate-600 sm:p-6">
-              Enter a learner profile ID above to view a verified public portfolio, or open the{' '}
+              Enter a portfolio share code (such as <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">spk-demo-chidi-okafor-2026</code>) or learner ID above to view a verified public portfolio, or open the{' '}
               <Link href="/demo?role=verifier" className="font-bold text-spark-700 underline">
                 Product Demo
               </Link>{' '}

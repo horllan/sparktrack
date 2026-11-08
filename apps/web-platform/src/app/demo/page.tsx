@@ -1080,9 +1080,17 @@ function InteractiveDemoCenterContent() {
                       {demoState.totalHoursTrained} hrs), and {demoState.activeProjects.length} Verified Projects.
                     </CardDescription>
                   </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="no-print"
+                    onClick={() => window.print()}
+                  >
+                    Print / Save PDF
+                  </Button>
                 </div>
 
-                <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
+                <div className="no-print mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
                   {REPORT_TABS.map((tab) => (
                     <button
                       key={tab.id}
@@ -1269,12 +1277,28 @@ function InteractiveDemoCenterContent() {
                     {demoState.activeTrainings.length} Completed Trainings ({demoState.totalHoursTrained} hrs)
                   </CardDescription>
                 </div>
-                <Badge variant="advanced">
-                  <ShieldCheck size={14} className="mr-1" />
-                  {allowPublicPortfolio
-                    ? 'Guardian Approved • Public Sharing On'
-                    : 'Private (Public Sharing Off)'}
-                </Badge>
+                <div className="no-print flex flex-wrap items-center gap-2">
+                  <Badge variant="advanced">
+                    <ShieldCheck size={14} className="mr-1" />
+                    {allowPublicPortfolio
+                      ? 'Guardian Approved • Public Sharing On'
+                      : 'Private (Public Sharing Off)'}
+                  </Badge>
+                  {allowPublicPortfolio && (
+                    <>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => router.push(`/p/${selectedCaseStudy.shareToken}`)}
+                      >
+                        Open Share Link (/p/{selectedCaseStudy.shareToken})
+                      </Button>
+                      <Button size="sm" onClick={() => window.print()}>
+                        Print / Save PDF
+                      </Button>
+                    </>
+                  )}
+                </div>
               </div>
             </CardHeader>
             <CardContent className="space-y-6">

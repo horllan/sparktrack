@@ -162,7 +162,7 @@ async function main() {
         learner_id, date_of_birth, age_group, current_school_id, education_stage,
         learner_stage, education_level, learning_goal, "current_role", target_role,
         primary_guardian_id, consent_status, consent_verified_at, consent_verification_method,
-        allow_public_portfolio, allow_partner_talent_discovery, declared_interests
+        allow_public_portfolio, allow_partner_talent_discovery, public_share_token, public_share_token_created_at, declared_interests
       )
       VALUES
         (
@@ -182,6 +182,8 @@ async function main() {
           'SMS_OTP',
           TRUE,
           TRUE,
+          'spk-demo-chidi-okafor-2026',
+          NOW(),
           ARRAY['Graphic Design']::text[]
         ),
         (
@@ -201,6 +203,8 @@ async function main() {
           'ADULT_SELF_ATTESTATION',
           TRUE,
           TRUE,
+          'spk-demo-aisha-musa-2026',
+          NOW(),
           ARRAY['Robotics', 'Business & Entrepreneurship']::text[]
         ),
         (
@@ -220,6 +224,8 @@ async function main() {
           'ADULT_SELF_ATTESTATION',
           TRUE,
           TRUE,
+          'spk-demo-tunde-adeyemi-2026',
+          NOW(),
           ARRAY['Web Development', 'AI & Data Science']::text[]
         ),
         (
@@ -239,6 +245,8 @@ async function main() {
           'SMS_OTP',
           TRUE,
           TRUE,
+          'spk-demo-zainab-ibrahim-2026',
+          NOW(),
           ARRAY['Graphic Design', 'Video Production', 'Business & Entrepreneurship']::text[]
         )
       ON CONFLICT (learner_id) DO UPDATE SET
@@ -246,6 +254,8 @@ async function main() {
         consent_status = 'VERIFIED_ACTIVE'::core.consent_status,
         allow_public_portfolio = TRUE,
         allow_partner_talent_discovery = TRUE,
+        public_share_token = COALESCE(core.learner_profiles.public_share_token, EXCLUDED.public_share_token),
+        public_share_token_created_at = COALESCE(core.learner_profiles.public_share_token_created_at, NOW()),
         primary_guardian_id = EXCLUDED.primary_guardian_id,
         learner_stage = EXCLUDED.learner_stage,
         education_level = EXCLUDED.education_level,

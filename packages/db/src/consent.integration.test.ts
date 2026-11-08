@@ -2,7 +2,7 @@ import { createHmac, randomUUID } from 'node:crypto';
 import { afterAll, describe, expect, it } from 'vitest';
 import { sql } from 'kysely';
 import { createKyselyClient } from './connection.js';
-import { consentQueries, onboardingQueries } from './queries.js';
+import { consentQueries, learningQueries, onboardingQueries } from './queries.js';
 
 const databaseUrl = process.env.SPARKTRACK_TEST_DATABASE_URL;
 if (databaseUrl && !['localhost', '127.0.0.1', '::1', '[::1]'].includes(new URL(databaseUrl).hostname)) {
@@ -87,6 +87,27 @@ describe('parental consent persistence', () => {
         });
         expect(replay.status).toBe('already_verified');
         expect(await consentQueries.recipient(db!, learnerId)).toMatchObject({ consent_status: 'VERIFIED_ACTIVE' });
+
+        // Issue a revocable share token (/p/<token>) and verify public resolution without exposing learner UUID
+        const issued = await learningQueries.issueShareLink(db!, learnerId, false);
+        expect(issued.status).toBe('ok');
+        if (issued.status === 'ok') {
+          const resolved = await learningQueries.publicPortfolioByShareToken(db!, issued.token);
+          expect(resolved.status).toBe('public');
+          if (resolved.status === 'public') {
+            expect('learnerId' in resolved.profile).toBe(false);
+          }
+
+          // Turning off public portfolio sharing automatically revokes the share token via DB trigger
+          await consentQueries.updatePreferences(db!, {
+            learnerId,
+            consentStatus: 'VERIFIED_ACTIVE',
+            allowPublicPortfolio: false,
+            allowPartnerTalentDiscovery: false,
+          });
+          const afterPrivacyChange = await learningQueries.getShareLink(db!, learnerId);
+          expect(afterPrivacyChange).toMatchObject({ status: 'ok', eligible: false, token: null });
+        }
       } finally {
         await sql`DELETE FROM evidence.parental_consent_audit WHERE challenge_id = ${challengeId}::uuid`.execute(db!);
         await sql`DELETE FROM evidence.parental_consent_challenges WHERE id = ${challengeId}::uuid`.execute(db!);

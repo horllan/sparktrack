@@ -148,6 +148,8 @@ export default function ParentDashboardPage() {
     Array<{ node_name: string; progression: string; score: number }>
   >([]);
   const [consentPrefs, setConsentPrefs] = useState<ConsentPreferences | null>(null);
+  const [shareToken, setShareToken] = useState<string | null>(null);
+  const [shareCopied, setShareCopied] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
@@ -227,10 +229,19 @@ export default function ParentDashboardPage() {
       const { data } = await createClient().auth.getSession();
       const token = data.session?.access_token;
       if (!token) return;
-      const res = await fetch(`${API_URL}/v1/auth/consent/preferences/${id.trim()}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const [res, shareRes] = await Promise.all([
+        fetch(`${API_URL}/v1/auth/consent/preferences/${id.trim()}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch(`${API_URL}/v1/learning/learners/${id.trim()}/share-link`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      ]);
       if (res.ok) setConsentPrefs((await res.json()) as ConsentPreferences);
+      if (shareRes.ok) {
+        const shareBody = (await shareRes.json()) as { token?: string | null };
+        setShareToken(shareBody.token ?? null);
+      }
     } catch {
       // Optional on initial load when not signed in
     }
@@ -316,12 +327,67 @@ export default function ParentDashboardPage() {
       const body = (await res.json()) as ConsentPreferences & { message?: string };
       if (!res.ok) throw new Error(body.message ?? 'Could not update NDPA privacy preferences.');
       setConsentPrefs(body);
+      if (!body.allowPublicPortfolio || body.consentStatus !== 'VERIFIED_ACTIVE') {
+        setShareToken(null);
+      }
       setNotice(`Updated family privacy choices (${body.consentStatus}).`);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not update privacy preferences.');
     } finally {
       setBusy(false);
     }
+  }
+
+  async function handleIssueShareLink(rotate: boolean) {
+    if (!learnerId.trim()) return;
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(`${API_URL}/v1/learning/learners/${learnerId.trim()}/share-link`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ rotate }),
+      });
+      const body = (await res.json()) as { token?: string; message?: string };
+      if (!res.ok) throw new Error(body.message ?? 'Could not create portfolio share link.');
+      setShareToken(body.token ?? null);
+      setNotice(rotate ? 'Generated a new portfolio share link (previous link deactivated).' : 'Portfolio share link is ready.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not create portfolio share link.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleRevokeShareLink() {
+    if (!learnerId.trim()) return;
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      const headers = await authHeaders();
+      const res = await fetch(`${API_URL}/v1/learning/learners/${learnerId.trim()}/share-link`, {
+        method: 'DELETE',
+        headers,
+      });
+      if (!res.ok) throw new Error('Could not revoke portfolio share link.');
+      setShareToken(null);
+      setNotice('Portfolio share link revoked.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not revoke portfolio share link.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleCopyShareLink() {
+    if (!shareToken || typeof window === 'undefined') return;
+    const url = `${window.location.origin}/p/${shareToken}`;
+    await navigator.clipboard.writeText(url);
+    setShareCopied(true);
+    setTimeout(() => setShareCopied(false), 2500);
   }
 
   async function fetchReport(generateNew: boolean) {
@@ -617,58 +683,107 @@ export default function ParentDashboardPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             {consentPrefs ? (
-              <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl bg-slate-50 p-4">
-                <div className="flex flex-wrap gap-6 text-sm font-medium text-slate-800">
-                  <label className="flex items-center gap-2.5">
-                    <input
-                      type="checkbox"
-                      checked={consentPrefs.allowPublicPortfolio}
-                      disabled={busy || consentPrefs.consentStatus !== 'VERIFIED_ACTIVE'}
-                      onChange={(e) =>
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl bg-slate-50 p-4">
+                  <div className="flex flex-wrap gap-6 text-sm font-medium text-slate-800">
+                    <label className="flex items-center gap-2.5">
+                      <input
+                        type="checkbox"
+                        checked={consentPrefs.allowPublicPortfolio}
+                        disabled={busy || consentPrefs.consentStatus !== 'VERIFIED_ACTIVE'}
+                        onChange={(e) =>
+                          void updatePrivacyPreferences({
+                            consentStatus: 'VERIFIED_ACTIVE',
+                            allowPublicPortfolio: e.target.checked,
+                            allowPartnerTalentDiscovery: consentPrefs.allowPartnerTalentDiscovery,
+                          })
+                        }
+                      />
+                      <span>Allow Public Verifiable Portfolio</span>
+                    </label>
+                    <label className="flex items-center gap-2.5">
+                      <input
+                        type="checkbox"
+                        checked={consentPrefs.allowPartnerTalentDiscovery}
+                        disabled={busy || consentPrefs.consentStatus !== 'VERIFIED_ACTIVE'}
+                        onChange={(e) =>
+                          void updatePrivacyPreferences({
+                            consentStatus: 'VERIFIED_ACTIVE',
+                            allowPublicPortfolio: consentPrefs.allowPublicPortfolio,
+                            allowPartnerTalentDiscovery: e.target.checked,
+                          })
+                        }
+                      />
+                      <span>Allow Partner Talent Discovery</span>
+                    </label>
+                  </div>
+                  {consentPrefs.consentStatus === 'VERIFIED_ACTIVE' ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={busy}
+                      onClick={() =>
                         void updatePrivacyPreferences({
-                          consentStatus: 'VERIFIED_ACTIVE',
-                          allowPublicPortfolio: e.target.checked,
-                          allowPartnerTalentDiscovery: consentPrefs.allowPartnerTalentDiscovery,
+                          consentStatus: 'REVOKED',
+                          allowPublicPortfolio: false,
+                          allowPartnerTalentDiscovery: false,
                         })
                       }
-                    />
-                    <span>Allow Public Verifiable Portfolio</span>
-                  </label>
-                  <label className="flex items-center gap-2.5">
-                    <input
-                      type="checkbox"
-                      checked={consentPrefs.allowPartnerTalentDiscovery}
-                      disabled={busy || consentPrefs.consentStatus !== 'VERIFIED_ACTIVE'}
-                      onChange={(e) =>
-                        void updatePrivacyPreferences({
-                          consentStatus: 'VERIFIED_ACTIVE',
-                          allowPublicPortfolio: consentPrefs.allowPublicPortfolio,
-                          allowPartnerTalentDiscovery: e.target.checked,
-                        })
-                      }
-                    />
-                    <span>Allow Partner Talent Discovery</span>
-                  </label>
+                    >
+                      Withdraw Consent (NDPA Right to Revoke)
+                    </Button>
+                  ) : (
+                    <Link href="/parent/consent" className="text-xs font-bold text-spark-700 hover:underline">
+                      Complete 6-digit SMS verification to re-activate consent →
+                    </Link>
+                  )}
                 </div>
-                {consentPrefs.consentStatus === 'VERIFIED_ACTIVE' ? (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={busy}
-                    onClick={() =>
-                      void updatePrivacyPreferences({
-                        consentStatus: 'REVOKED',
-                        allowPublicPortfolio: false,
-                        allowPartnerTalentDiscovery: false,
-                      })
-                    }
-                  >
-                    Withdraw Consent (NDPA Right to Revoke)
-                  </Button>
-                ) : (
-                  <Link href="/parent/consent" className="text-xs font-bold text-spark-700 hover:underline">
-                    Complete 6-digit SMS verification to re-activate consent →
-                  </Link>
+
+                {consentPrefs.consentStatus === 'VERIFIED_ACTIVE' && consentPrefs.allowPublicPortfolio && (
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 text-xs">
+                    <div>
+                      <p className="font-bold text-emerald-950">Shareable Portfolio Link</p>
+                      <p className="mt-0.5 text-emerald-800">
+                        {shareToken
+                          ? `Active link: /p/${shareToken} (never exposes internal profile IDs)`
+                          : 'Create a revocable public portfolio link for schools, scholarships, or internships.'}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {shareToken ? (
+                        <>
+                          <Link href={`/p/${shareToken}`}>
+                            <Button size="sm" variant="outline">
+                              Open Link
+                            </Button>
+                          </Link>
+                          <Button size="sm" onClick={() => void handleCopyShareLink()}>
+                            {shareCopied ? 'Copied!' : 'Copy Link'}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={busy}
+                            onClick={() => void handleIssueShareLink(true)}
+                          >
+                            Rotate Link
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={busy}
+                            onClick={() => void handleRevokeShareLink()}
+                          >
+                            Revoke
+                          </Button>
+                        </>
+                      ) : (
+                        <Button size="sm" disabled={busy} onClick={() => void handleIssueShareLink(false)}>
+                          Create Share Link
+                        </Button>
+                      )}
+                    </div>
+                  </div>
                 )}
               </div>
             ) : (
@@ -773,12 +888,15 @@ export default function ParentDashboardPage() {
                       Prepared on {new Date(report.generatedAt).toLocaleDateString()} · Practical guidance based on verified projects
                     </CardDescription>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className="no-print flex flex-wrap items-center gap-2">
                     <Badge variant={report.guardrailResult?.passed ? 'competent' : 'destructive'}>
                       {report.guardrailResult?.passed
                         ? 'Child-Safe Guidance Verified'
                         : 'Needs Review'}
                     </Badge>
+                    <Button size="sm" variant="outline" onClick={() => window.print()}>
+                      Print / Save PDF
+                    </Button>
                   </div>
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-4">

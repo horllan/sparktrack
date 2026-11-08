@@ -82,6 +82,8 @@ export const learnerProfiles = coreSchema.table('learner_profiles', {
   consentVerificationMethod: text('consent_verification_method'),
   allowPublicPortfolio: boolean('allow_public_portfolio').notNull().default(false),
   allowPartnerTalentDiscovery: boolean('allow_partner_talent_discovery').notNull().default(false),
+  publicShareToken: text('public_share_token'),
+  publicShareTokenCreatedAt: timestamp('public_share_token_created_at', { withTimezone: true }),
   declaredInterests: text('declared_interests').array().default([]),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

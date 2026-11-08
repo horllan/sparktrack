@@ -1,4 +1,4 @@
-import { Body, Controller, ForbiddenException, Get, Inject, Module, NotFoundException, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, ForbiddenException, Get, HttpException, HttpStatus, Inject, Module, NotFoundException, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { institutionQueries, learningQueries, ledgerQueries, telemetryQueries, type SparkTrackDatabase } from '@sparktrack/db';
 import type { Kysely } from 'kysely';
@@ -37,6 +37,12 @@ const WhatsAppPreferenceSchema = z.object({
   }
 });
 
+const IssueShareLinkSchema = z.object({
+  rotate: z.boolean().optional().default(false),
+});
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 @ApiTags('learning')
 @Controller('v1/learning')
 class LearningController {
@@ -60,16 +66,80 @@ class LearningController {
   }
 
   @Public()
+  @Get('portfolio/shared/:token')
+  @ApiOperation({ summary: 'Resolve a revocable public portfolio share link (/p/:token) without exposing learner UUID' })
+  async publicPortfolioByToken(@Param('token') token: string) {
+    const cleanToken = token.trim();
+    const rate = await this.cache.checkRateLimit(`sparktrack:ratelimit:share-token:${cleanToken.slice(0, 12)}`, 60, 60);
+    if (!rate.allowed) {
+      throw new HttpException('Too many portfolio verification requests. Please try again shortly.', HttpStatus.TOO_MANY_REQUESTS);
+    }
+    const res = await learningQueries.publicPortfolioByShareToken(this.db, cleanToken);
+    if (res.status === 'not_found') throw new NotFoundException('Shared portfolio link is invalid or has been revoked.');
+    if (res.status === 'private') {
+      throw new ForbiddenException(
+        'This portfolio is private. Guardian verified consent and public portfolio sharing are required.',
+      );
+    }
+    return res;
+  }
+
+  @Public()
   @Get('portfolio/:learnerId')
-  @ApiOperation({ summary: 'NDPA-gated public verifiable portfolio and SHA-256 ledger receipts' })
-  async publicPortfolio(@Param('learnerId', ParseUUIDPipe) learnerId: string) {
-    const res = await learningQueries.publicPortfolio(this.db, learnerId);
+  @ApiOperation({ summary: 'NDPA-gated public verifiable portfolio by learner UUID or share token' })
+  async publicPortfolio(@Param('learnerId') idOrToken: string) {
+    const clean = idOrToken.trim();
+    const res = UUID_REGEX.test(clean)
+      ? await learningQueries.publicPortfolio(this.db, clean)
+      : await learningQueries.publicPortfolioByShareToken(this.db, clean);
     if (res.status === 'not_found') throw new NotFoundException('Learner portfolio not found');
     if (res.status === 'private') {
       throw new ForbiddenException(
         'This learner portfolio is private. Guardian verified consent and explicit public portfolio opt-in are required.',
       );
     }
+    return res;
+  }
+
+  @ApiBearerAuth()
+  @Get('learners/:learnerId/share-link')
+  @ApiOperation({ summary: 'Get the current revocable public portfolio share link status for a learner' })
+  async getShareLink(@CurrentUser() user: AuthUser, @Param('learnerId', ParseUUIDPipe) learnerId: string) {
+    await this.access.assertCanAccess(user, learnerId);
+    const res = await learningQueries.getShareLink(this.db, learnerId);
+    if (res.status === 'not_found') throw new NotFoundException('Learner profile not found');
+    return res;
+  }
+
+  @ApiBearerAuth()
+  @Post('learners/:learnerId/share-link')
+  @Roles('LEARNER', 'PARENT', 'SUPER_ADMIN')
+  @ApiOperation({ summary: 'Create or rotate a revocable public portfolio share link (/p/:token)' })
+  async issueShareLink(
+    @CurrentUser() user: AuthUser,
+    @Param('learnerId', ParseUUIDPipe) learnerId: string,
+    @Body() body: unknown,
+  ) {
+    await this.access.assertCanAccess(user, learnerId);
+    const parsed = IssueShareLinkSchema.parse(body ?? {});
+    const res = await learningQueries.issueShareLink(this.db, learnerId, parsed.rotate);
+    if (res.status === 'not_found') throw new NotFoundException('Learner profile not found');
+    if (res.status === 'sharing_disabled') {
+      throw new ForbiddenException(
+        'Public portfolio sharing must be enabled with verified consent before creating a share link.',
+      );
+    }
+    return res;
+  }
+
+  @ApiBearerAuth()
+  @Delete('learners/:learnerId/share-link')
+  @Roles('LEARNER', 'PARENT', 'SUPER_ADMIN')
+  @ApiOperation({ summary: 'Immediately revoke a public portfolio share link' })
+  async revokeShareLink(@CurrentUser() user: AuthUser, @Param('learnerId', ParseUUIDPipe) learnerId: string) {
+    await this.access.assertCanAccess(user, learnerId);
+    const res = await learningQueries.revokeShareLink(this.db, learnerId);
+    if (res.status === 'not_found') throw new NotFoundException('Learner profile not found');
     return res;
   }
 

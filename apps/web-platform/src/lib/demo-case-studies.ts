@@ -49,6 +49,7 @@ export interface DemoCaseStudy {
   id: string;
   learnerId: string;
   accessCode: string;
+  shareToken: string;
   badgeLabel: string;
   caseStudyTitle: string;
   caseStudySubtitle: string;
@@ -156,6 +157,7 @@ export const DEMO_CASE_STUDIES: DemoCaseStudy[] = [
     id: 'chidi-jss3',
     learnerId: '11111111-1111-4111-8111-111111111113',
     accessCode: 'SPK-111113',
+    shareToken: 'spk-demo-chidi-okafor-2026',
     badgeLabel: 'Case Study 1 · Secondary School (JSS1 → JSS3)',
     caseStudyTitle: 'Chidi Okafor — 13yo Secondary School STEM & Cyber Explorer',
     caseStudySubtitle:
@@ -381,6 +383,7 @@ export const DEMO_CASE_STUDIES: DemoCaseStudy[] = [
     id: 'aisha-vocational',
     learnerId: '11111111-1111-4111-8111-111111111114',
     accessCode: 'SPK-111114',
+    shareToken: 'spk-demo-aisha-musa-2026',
     badgeLabel: 'Case Study 2 · Out-of-School / Vocational Maker (19yo)',
     caseStudyTitle: 'Aisha Musa — 19yo Solar Hardware & IoT Vocational Technologist',
     caseStudySubtitle:
@@ -564,6 +567,7 @@ export const DEMO_CASE_STUDIES: DemoCaseStudy[] = [
     id: 'tunde-nysc',
     learnerId: '11111111-1111-4111-8111-111111111115',
     accessCode: 'SPK-111115',
+    shareToken: 'spk-demo-tunde-adeyemi-2026',
     badgeLabel: 'Case Study 3 · University / NYSC Graduate Track (23yo)',
     caseStudyTitle: 'Tunde Adeyemi — 23yo NYSC Corps Member & Full-Stack AI Builder',
     caseStudySubtitle:
@@ -747,6 +751,7 @@ export const DEMO_CASE_STUDIES: DemoCaseStudy[] = [
     id: 'zainab-creative',
     learnerId: '11111111-1111-4111-8111-111111111116',
     accessCode: 'SPK-111116',
+    shareToken: 'spk-demo-zainab-ibrahim-2026',
     badgeLabel: 'Case Study 4 · Creative Design & Youth Venture (JSS2 → SS1)',
     caseStudyTitle: 'Zainab Ibrahim — 15yo UI/UX Designer & Student Social Entrepreneur',
     caseStudySubtitle:

@@ -1,5 +1,5 @@
-import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
-import { sql, type Kysely } from 'kysely';
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+import { sql, type Kysely, type RawBuilder } from 'kysely';
 import type { SparkTrackDatabase } from './kysely-types.js';
 
 export type Db = Kysely<SparkTrackDatabase>;
@@ -1127,55 +1127,134 @@ export const learningQueries = {
   },
 
   async publicPortfolio(db: Db, learnerId: string) {
-    const profileRes = await sql<{
-      learner_id: string;
-      full_name: string;
-      education_stage: string;
-      school_name: string | null;
-      consent_status: string;
+    return buildPublicPortfolio(db, sql`lp.learner_id = ${learnerId}::uuid`);
+  },
+
+  /** Public lookup by opaque share token. Never returns the learner UUID. */
+  async publicPortfolioByShareToken(db: Db, token: string) {
+    if (!SHARE_TOKEN_PATTERN.test(token)) return { status: 'not_found' as const };
+    const res = await buildPublicPortfolio(db, sql`lp.public_share_token = ${token}`);
+    if (res.status !== 'public') return res;
+    const { learnerId: _omit, ...profile } = res.profile;
+    return { ...res, profile };
+  },
+
+  /** Returns the current share link state for a learner (owner/guardian view). */
+  async getShareLink(db: Db, learnerId: string) {
+    const r = await sql<{
+      public_share_token: string | null;
+      public_share_token_created_at: Date | null;
       allow_public_portfolio: boolean;
-      declared_interests: string[];
+      consent_status: string;
     }>`
-      SELECT
-        lp.learner_id,
-        u.full_name,
-        lp.education_stage,
-        o.name AS school_name,
-        lp.consent_status::text,
-        lp.allow_public_portfolio,
-        lp.declared_interests
-      FROM core.learner_profiles lp
-      JOIN core.users u ON u.id = lp.learner_id
-      LEFT JOIN core.organisations o ON o.id = lp.current_school_id
-      WHERE lp.learner_id = ${learnerId}::uuid
+      SELECT public_share_token, public_share_token_created_at, allow_public_portfolio, consent_status::text
+      FROM core.learner_profiles
+      WHERE learner_id = ${learnerId}::uuid
     `.execute(db);
-
-    const row = profileRes.rows[0];
+    const row = r.rows[0];
     if (!row) return { status: 'not_found' as const };
-    if (row.consent_status !== 'VERIFIED_ACTIVE' || !row.allow_public_portfolio) {
-      return { status: 'private' as const };
-    }
-
-    const [skills, artifacts] = await Promise.all([
-      bitemporalQueries.profileAsOf(db, learnerId, new Date()),
-      this.learnerArtifacts(db, learnerId),
-    ]);
-
-    const firstName = row.full_name.trim().split(/\s+/)[0] ?? 'Explorer';
+    const eligible = row.consent_status === 'VERIFIED_ACTIVE' && row.allow_public_portfolio;
     return {
-      status: 'public' as const,
-      profile: {
-        learnerId: row.learner_id,
-        displayName: `${firstName} (${row.education_stage})`,
-        educationStage: row.education_stage,
-        schoolName: row.school_name,
-        declaredInterests: row.declared_interests ?? [],
-      },
-      skills,
-      artifacts,
+      status: 'ok' as const,
+      eligible,
+      token: row.public_share_token,
+      createdAt: row.public_share_token_created_at ? row.public_share_token_created_at.toISOString() : null,
     };
   },
+
+  /**
+   * Creates (or, with rotate=true, replaces) the share token. Only succeeds while
+   * consent is verified and public sharing is on; the DB trigger and CHECK
+   * constraint enforce the same rule independently.
+   */
+  async issueShareLink(db: Db, learnerId: string, rotate: boolean) {
+    return db.transaction().execute(async (trx) => {
+      const cur = await sql<{ public_share_token: string | null; allow_public_portfolio: boolean; consent_status: string }>`
+        SELECT public_share_token, allow_public_portfolio, consent_status::text
+        FROM core.learner_profiles
+        WHERE learner_id = ${learnerId}::uuid
+        FOR UPDATE
+      `.execute(trx);
+      const row = cur.rows[0];
+      if (!row) return { status: 'not_found' as const };
+      if (row.consent_status !== 'VERIFIED_ACTIVE' || !row.allow_public_portfolio) {
+        return { status: 'sharing_disabled' as const };
+      }
+      if (row.public_share_token && !rotate) {
+        return { status: 'ok' as const, token: row.public_share_token };
+      }
+      const token = randomBytes(18).toString('base64url');
+      await sql`
+        UPDATE core.learner_profiles
+        SET public_share_token = ${token}, public_share_token_created_at = NOW(), updated_at = NOW()
+        WHERE learner_id = ${learnerId}::uuid
+      `.execute(trx);
+      return { status: 'ok' as const, token };
+    });
+  },
+
+  async revokeShareLink(db: Db, learnerId: string) {
+    const r = await sql<{ learner_id: string }>`
+      UPDATE core.learner_profiles
+      SET public_share_token = NULL, public_share_token_created_at = NULL, updated_at = NOW()
+      WHERE learner_id = ${learnerId}::uuid
+      RETURNING learner_id
+    `.execute(db);
+    return r.rows[0] ? { status: 'revoked' as const } : { status: 'not_found' as const };
+  },
 };
+
+const SHARE_TOKEN_PATTERN = /^[A-Za-z0-9_-]{22,64}$/;
+
+async function buildPublicPortfolio(db: Db, where: RawBuilder<unknown>) {
+  const profileRes = await sql<{
+    learner_id: string;
+    full_name: string;
+    education_stage: string;
+    school_name: string | null;
+    consent_status: string;
+    allow_public_portfolio: boolean;
+    declared_interests: string[];
+  }>`
+    SELECT
+      lp.learner_id,
+      u.full_name,
+      lp.education_stage,
+      o.name AS school_name,
+      lp.consent_status::text,
+      lp.allow_public_portfolio,
+      lp.declared_interests
+    FROM core.learner_profiles lp
+    JOIN core.users u ON u.id = lp.learner_id
+    LEFT JOIN core.organisations o ON o.id = lp.current_school_id
+    WHERE ${where}
+  `.execute(db);
+
+  const row = profileRes.rows[0];
+  if (!row) return { status: 'not_found' as const };
+  if (row.consent_status !== 'VERIFIED_ACTIVE' || !row.allow_public_portfolio) {
+    return { status: 'private' as const };
+  }
+
+  const [skills, artifacts] = await Promise.all([
+    bitemporalQueries.profileAsOf(db, row.learner_id, new Date()),
+    learningQueries.learnerArtifacts(db, row.learner_id),
+  ]);
+
+  const firstName = row.full_name.trim().split(/\s+/)[0] ?? 'Explorer';
+  return {
+    status: 'public' as const,
+    profile: {
+      learnerId: row.learner_id,
+      displayName: `${firstName} (${row.education_stage})`,
+      educationStage: row.education_stage,
+      schoolName: row.school_name,
+      declaredInterests: row.declared_interests ?? [],
+    },
+    skills,
+    artifacts,
+  };
+}
 
 export const mentorshipQueries = {
   async pendingQueue(
