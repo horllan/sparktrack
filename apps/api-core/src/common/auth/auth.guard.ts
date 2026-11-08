@@ -6,7 +6,7 @@ import { Reflector } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import type { JWTVerifyGetKey } from 'jose';
-import { accessQueries } from '@sparktrack/db';
+import { accessQueries, apiKeyQueries } from '@sparktrack/db';
 import type { Kysely } from 'kysely';
 import type { SparkTrackDatabase } from '@sparktrack/db';
 import { KYSELY } from '../database/database.module';
@@ -41,6 +41,28 @@ export class AuthGuard implements CanActivate {
     if (this.reflector.getAllAndOverride<boolean>(IS_PUBLIC, [ctx.getHandler(), ctx.getClass()])) return true;
     const req = ctx.switchToHttp().getRequest();
     const header: string | undefined = req.headers['authorization'];
+    const apiKeyHeader: string | undefined = req.headers['x-api-key'];
+    const rawApiKey =
+      typeof apiKeyHeader === 'string' && apiKeyHeader.startsWith('spk_live_')
+        ? apiKeyHeader.trim()
+        : header?.startsWith('Bearer spk_live_')
+          ? header.slice(7).trim()
+          : null;
+
+    if (rawApiKey) {
+      const verifiedKey = await apiKeyQueries.verifyKey(this.db, rawApiKey);
+      if (!verifiedKey) throw new UnauthorizedException('Invalid or revoked API key');
+      const user: AuthUser = {
+        id: verifiedKey.userId,
+        role: verifiedKey.role as Role,
+        organisationId: verifiedKey.organisationId,
+      };
+      req.user = user;
+      const roles = this.reflector.getAllAndOverride<Role[]>(ROLES_KEY, [ctx.getHandler(), ctx.getClass()]);
+      if (roles?.length && !roles.includes(user.role) && user.role !== 'SUPER_ADMIN') throw new ForbiddenException();
+      return true;
+    }
+
     if (!header?.startsWith('Bearer ')) throw new UnauthorizedException();
     const sub = await this.verify(header.slice(7));
 

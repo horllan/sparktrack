@@ -33,6 +33,7 @@ import {
   type DemoTrainingMilestone,
 } from '../../lib/demo-case-studies';
 import { createClient } from '../../lib/supabase/client';
+import { PortfolioQrBadge } from '../../components/portfolio-qr-badge';
 
 type DemoPersona = 'student' | 'parent' | 'mentor' | 'school' | 'verifier';
 
@@ -1309,6 +1310,11 @@ function InteractiveDemoCenterContent() {
                 </div>
               ) : (
                 <>
+                  <PortfolioQrBadge
+                    token={selectedCaseStudy.shareToken}
+                    label="Verified Share Link & QR Seal"
+                    subtitle="Included on printed and PDF capability portfolios for instant verification"
+                  />
                   <div>
                     <h3 className="mb-3 text-xs font-extrabold uppercase tracking-wider text-slate-600">
                       Completed Trainings &amp; Certificates ({demoState.activeTrainings.length})

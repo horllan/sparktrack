@@ -15,6 +15,7 @@ import {
   ShieldCheck,
 } from '@sparktrack/ui';
 import { DEMO_CASE_STUDIES, computeDemoState } from '../../../lib/demo-case-studies';
+import { PortfolioQrBadge } from '../../../components/portfolio-qr-badge';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
 
@@ -179,21 +180,24 @@ export default function SharedPortfolioPage() {
             </p>
           </div>
 
-          <div className="no-print flex flex-wrap items-center gap-2.5">
-            <Button type="button" variant="outline" size="sm" onClick={() => void handleCopyLink()}>
-              {copied ? (
-                <>
-                  <Check size={14} className="mr-1.5" /> Link Copied
-                </>
-              ) : (
-                'Copy Share Link'
-              )}
-            </Button>
-            {portfolio && (
-              <Button type="button" size="sm" onClick={handlePrint}>
-                Print / Save PDF
+          <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
+            {portfolio && <PortfolioQrBadge token={token} />}
+            <div className="no-print flex flex-wrap items-center gap-2.5">
+              <Button type="button" variant="outline" size="sm" onClick={() => void handleCopyLink()}>
+                {copied ? (
+                  <>
+                    <Check size={14} className="mr-1.5" /> Link Copied
+                  </>
+                ) : (
+                  'Copy Share Link'
+                )}
               </Button>
-            )}
+              {portfolio && (
+                <Button type="button" size="sm" onClick={handlePrint}>
+                  Print / Save PDF
+                </Button>
+              )}
+            </div>
           </div>
         </div>
 

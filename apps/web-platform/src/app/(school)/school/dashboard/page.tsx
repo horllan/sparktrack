@@ -104,6 +104,14 @@ export default function SchoolDashboardPage() {
   const [students, setStudents] = useState<ManagedStudent[]>([]);
   const [talentPool, setTalentPool] = useState<TalentPoolEntry[]>([]);
   const [showAddStudent, setShowAddStudent] = useState(false);
+  const [showBulkImport, setShowBulkImport] = useState(false);
+  const [csvText, setCsvText] = useState('');
+  const [bulkResult, setBulkResult] = useState<{
+    createdCount: number;
+    errorCount: number;
+    created: Array<{ fullName: string; educationStage: string; accessCode: string }>;
+    errors: Array<{ index: number; fullName: string; reason: string }>;
+  } | null>(null);
 
   // Add Student Form State (for School Admin / Organisation)
   const [studentName, setStudentName] = useState('');
@@ -226,6 +234,104 @@ export default function SchoolDashboardPage() {
     }
   }
 
+  function handleLoadSampleCsv() {
+    setCsvText(
+      [
+        'fullName,dateOfBirth,educationStage,guardianName,guardianPhone,guardianEmail,interests',
+        'Adaeze Nwosu,2013-03-15,JSS2,Mr. Emeka Nwosu,+2348031112233,emeka.nwosu@example.com,Robotics|Coding & Programming',
+        'Ibrahim Danjuma,2012-07-22,JSS3,Mrs. Halima Danjuma,+2348032223344,halima.danjuma@example.com,Cybersecurity|AI & Data Science',
+        'Toluwani Adeyinka,2011-11-05,SS1,Dr. Funke Adeyinka,+2348033334455,funke.adeyinka@example.com,Graphic Design|Business & Entrepreneurship',
+      ].join('\n'),
+    );
+    setBulkResult(null);
+  }
+
+  async function handleCsvFileUpload(file: File | undefined) {
+    if (!file) return;
+    const text = await file.text();
+    setCsvText(text);
+    setBulkResult(null);
+  }
+
+  async function handleBulkImportStudents() {
+    const lines = csvText
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean);
+    if (lines.length === 0) {
+      setError('Paste CSV rows or load the sample template first.');
+      return;
+    }
+    const dataRows = lines[0]!.toLowerCase().includes('fullname') ? lines.slice(1) : lines;
+    const parsedStudents = dataRows
+      .map((row) => {
+        const cols = row.split(',').map((c) => c.trim());
+        const [fullName, dateOfBirth, educationStage, gName, gPhone, gEmail, interestsRaw] = cols;
+        if (!fullName || !dateOfBirth || !educationStage || !gName || !gPhone) return null;
+        const declaredInterests = (interestsRaw ?? 'Robotics|Coding & Programming')
+          .split('|')
+          .map((s) => s.trim())
+          .filter(Boolean);
+        return {
+          fullName,
+          dateOfBirth,
+          educationStage,
+          ...(studentSchoolName.trim() ? { schoolName: studentSchoolName.trim() } : {}),
+          guardianName: gName,
+          guardianPhone: gPhone,
+          ...(gEmail ? { guardianEmail: gEmail } : {}),
+          declaredInterests: declaredInterests.length > 0 ? declaredInterests : ['Robotics'],
+        };
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== null);
+
+    if (parsedStudents.length === 0) {
+      setError(
+        'No valid CSV rows found. Format: fullName,dateOfBirth(YYYY-MM-DD),educationStage,guardianName,guardianPhone,guardianEmail,interests',
+      );
+      return;
+    }
+
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      const { data: sessionData } = await createClient().auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) throw new Error('Please sign in with your School or Organisation account at /auth first.');
+
+      const res = await fetch(`${API_URL}/v1/auth/children/bulk`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ students: parsedStudents }),
+      });
+      const body = (await res.json()) as {
+        createdCount?: number;
+        errorCount?: number;
+        created?: Array<{ fullName: string; educationStage: string; accessCode: string }>;
+        errors?: Array<{ index: number; fullName: string; reason: string }>;
+        message?: string;
+      };
+      if (!res.ok) throw new Error(body.message ?? 'Could not complete bulk import.');
+
+      setBulkResult({
+        createdCount: body.createdCount ?? 0,
+        errorCount: body.errorCount ?? 0,
+        created: body.created ?? [],
+        errors: body.errors ?? [],
+      });
+      setNotice(`Imported ${body.createdCount ?? 0} students from CSV roster.`);
+      await Promise.all([loadAnalytics(), loadManagedStudents()]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Bulk import failed.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <main className="min-h-screen px-4 py-8 sm:px-6 lg:px-10">
       <div className="mx-auto max-w-7xl space-y-7">
@@ -255,6 +361,9 @@ export default function SchoolDashboardPage() {
               <UserPlus className="mr-1.5 h-4 w-4" />
               {showAddStudent ? 'Close Student Form' : 'Register Student'}
             </Button>
+            <Button variant="outline" onClick={() => setShowBulkImport((v) => !v)}>
+              {showBulkImport ? 'Close CSV Import' : 'Bulk CSV Import'}
+            </Button>
             <Button variant="outline" disabled={busy} onClick={() => void loadAnalytics()}>
               <RefreshCw className={`mr-1.5 h-4 w-4 ${busy ? 'animate-spin' : ''}`} />
               {busy ? 'Refreshing…' : 'Refresh Data'}
@@ -274,6 +383,74 @@ export default function SchoolDashboardPage() {
           >
             {notice}
           </p>
+        )}
+
+        {/* BULK CSV ROSTER IMPORT DRAWER */}
+        {showBulkImport && (
+          <Card className="border-spark-300 shadow-lg">
+            <CardHeader>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <CardTitle className="text-lg">Bulk Cohort CSV Import (JSS1–SS3)</CardTitle>
+                  <CardDescription>
+                    Upload a CSV file or paste rows to onboard an entire class cohort at once and generate student
+                    access codes.
+                  </CardDescription>
+                </div>
+                <Button type="button" size="sm" variant="outline" onClick={handleLoadSampleCsv}>
+                  Load Sample 3-Student CSV
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex flex-wrap items-center gap-3 text-xs">
+                <label className="font-semibold text-slate-700">
+                  Upload .csv file:
+                  <input
+                    type="file"
+                    accept=".csv,text/csv"
+                    onChange={(e) => void handleCsvFileUpload(e.target.files?.[0])}
+                    className="ml-2 text-xs"
+                  />
+                </label>
+              </div>
+              <textarea
+                rows={5}
+                value={csvText}
+                onChange={(e) => setCsvText(e.target.value)}
+                placeholder="fullName,dateOfBirth,educationStage,guardianName,guardianPhone,guardianEmail,interests"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 font-mono text-xs text-slate-800"
+              />
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-xs text-slate-500">
+                  Columns: <code>fullName,dateOfBirth,educationStage,guardianName,guardianPhone,guardianEmail,interests</code>
+                </p>
+                <Button disabled={busy || !csvText.trim()} onClick={() => void handleBulkImportStudents()}>
+                  {busy ? 'Importing Roster…' : 'Import Class Roster'}
+                </Button>
+              </div>
+
+              {bulkResult && (
+                <div className="space-y-2 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 text-xs">
+                  <p className="font-bold text-emerald-950">
+                    Imported {bulkResult.createdCount} student(s) • {bulkResult.errorCount} error(s)
+                  </p>
+                  {bulkResult.created.length > 0 && (
+                    <div className="grid gap-2 sm:grid-cols-3">
+                      {bulkResult.created.map((c) => (
+                        <div key={c.accessCode} className="rounded-xl border border-emerald-200 bg-white p-2.5">
+                          <p className="font-bold text-slate-900">
+                            {c.fullName} ({c.educationStage})
+                          </p>
+                          <p className="font-mono text-[11px] font-bold text-spark-700">Access Code: {c.accessCode}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         )}
 
         {/* SCHOOL STUDENT REGISTRATION DRAWER */}

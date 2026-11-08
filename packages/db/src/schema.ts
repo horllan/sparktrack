@@ -99,6 +99,21 @@ export const messagingPreferenceEvents = coreSchema.table('messaging_preference_
   recordedAt: timestamp('recorded_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [index('idx_messaging_preference_events_learner').on(t.learnerId, t.recordedAt)]);
 
+export const apiKeys = coreSchema.table('api_keys', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  organisationId: uuid('organisation_id').references(() => organisations.id, { onDelete: 'cascade' }),
+  createdBy: uuid('created_by').notNull().references(() => users.id, { onDelete: 'restrict' }),
+  label: text('label').notNull(),
+  keyPrefix: text('key_prefix').notNull(),
+  keyHash: text('key_hash').notNull().unique(),
+  scopes: text('scopes').array().notNull().default(['intelligence:read', 'evidence:write']),
+  rateLimitPerMinute: integer('rate_limit_per_minute').notNull().default(120),
+  lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const programmeCohorts = coreSchema.table('programme_cohorts', {
   id: uuid('id').primaryKey().defaultRandom(),
   organisationId: uuid('organisation_id').references(() => organisations.id),

@@ -105,6 +105,19 @@ interface HealthTelemetry {
   timestamp: string;
 }
 
+interface PartnerApiKey {
+  id: string;
+  label: string;
+  keyPrefix: string;
+  scopes: string[];
+  rateLimitPerMinute: number;
+  organisationName: string | null;
+  lastUsedAt: string | null;
+  expiresAt: string | null;
+  revokedAt: string | null;
+  createdAt: string;
+}
+
 type AdminTab = 'cohorts' | 'enrolment' | 'partners' | 'graph' | 'tickets' | 'staging';
 
 export default function AdminDashboardPage() {
@@ -116,6 +129,9 @@ export default function AdminDashboardPage() {
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [accounts, setAccounts] = useState<ProvisionedAccount[]>([]);
   const [health, setHealth] = useState<HealthTelemetry | null>(null);
+  const [apiKeys, setApiKeys] = useState<PartnerApiKey[]>([]);
+  const [apiKeyLabel, setApiKeyLabel] = useState('');
+  const [newlyIssuedApiKey, setNewlyIssuedApiKey] = useState<string | null>(null);
   const [operatorRole, setOperatorRole] = useState<string | null>(null);
   const [resolutionDrafts, setResolutionDrafts] = useState<Record<string, string>>({});
   const [orgName, setOrgName] = useState('');
@@ -225,18 +241,86 @@ export default function AdminDashboardPage() {
     }
   }, []);
 
+  const loadApiKeys = useCallback(async () => {
+    try {
+      const token = await getToken();
+      if (!token) return;
+      const res = await fetch(`${API_URL}/v1/auth/api-keys`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        setApiKeys((await res.json()) as PartnerApiKey[]);
+      }
+    } catch {
+      // Non-fatal
+    }
+  }, []);
+
   useEffect(() => {
     void loadCohorts();
     void loadTickets();
     void loadAccounts();
     void loadHealth();
+    void loadApiKeys();
     fetch(`${API_URL}/v1/graph/topology`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data) setTopology(data as GraphTopology);
       })
       .catch(() => null);
-  }, [loadCohorts, loadTickets, loadAccounts, loadHealth]);
+  }, [loadCohorts, loadTickets, loadAccounts, loadHealth, loadApiKeys]);
+
+  async function handleIssueApiKey() {
+    if (!apiKeyLabel.trim()) return;
+    setBusy(true);
+    setError('');
+    setNotice('');
+    setNewlyIssuedApiKey(null);
+    try {
+      const token = await getToken();
+      if (!token) throw new Error('Sign in with an Admin or Partner account first.');
+      const res = await fetch(`${API_URL}/v1/auth/api-keys`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          label: apiKeyLabel.trim(),
+          scopes: ['intelligence:read', 'evidence:write', 'portfolio:verify'],
+          rateLimitPerMinute: 120,
+        }),
+      });
+      const body = (await res.json()) as { secretKey?: string; label?: string; message?: string };
+      if (!res.ok) throw new Error(body.message ?? 'Could not create partner API key.');
+      setNewlyIssuedApiKey(body.secretKey ?? null);
+      setApiKeyLabel('');
+      setNotice(`Created API key "${body.label}". Copy the key now—it is shown only once.`);
+      await loadApiKeys();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not create API key.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleRevokeApiKey(keyId: string) {
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      const token = await getToken();
+      if (!token) throw new Error('Sign in with an Admin or Partner account first.');
+      const res = await fetch(`${API_URL}/v1/auth/api-keys/${keyId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Could not revoke API key.');
+      setNotice('Revoked partner API key.');
+      await loadApiKeys();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not revoke API key.');
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function issueInvitationToken() {
     setBusy(true);
@@ -1134,6 +1218,71 @@ export default function AdminDashboardPage() {
                   </p>
                   <p className="mt-1 text-slate-500">Tamper-evident project records</p>
                 </div>
+              </CardContent>
+            </Card>
+
+            {/* ENTERPRISE PARTNER API KEYS */}
+            <Card>
+              <CardHeader>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <CardTitle className="text-base">Partner Integration Keys ({apiKeys.length})</CardTitle>
+                    <CardDescription>
+                      Create or revoke access keys for partner training hubs and scholarship portals.
+                    </CardDescription>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => void loadApiKeys()}>
+                    Refresh Keys
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center">
+                  <Input
+                    value={apiKeyLabel}
+                    onChange={(e) => setApiKeyLabel(e.target.value)}
+                    placeholder="Partner key label (e.g., Lagos Maker Hub Integration)"
+                    className="flex-1"
+                  />
+                  <Button disabled={busy || !apiKeyLabel.trim()} onClick={() => void handleIssueApiKey()}>
+                    Create Access Key
+                  </Button>
+                </div>
+
+                {newlyIssuedApiKey && (
+                  <div className="rounded-2xl border border-emerald-300 bg-emerald-50 p-4 text-xs">
+                    <p className="font-bold text-emerald-950">New Partner Access Key (Copy now — shown once):</p>
+                    <p className="mt-1 break-all font-mono text-xs font-bold text-emerald-900">{newlyIssuedApiKey}</p>
+                  </div>
+                )}
+
+                {apiKeys.length > 0 && (
+                  <div className="grid gap-2.5 sm:grid-cols-2">
+                    {apiKeys.map((k) => (
+                      <div
+                        key={k.id}
+                        className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-xs"
+                      >
+                        <div>
+                          <p className="font-bold text-slate-900">{k.label}</p>
+                          <p className="mt-0.5 font-mono text-[11px] text-slate-500">Prefix: {k.keyPrefix}…</p>
+                        </div>
+                        {k.revokedAt ? (
+                          <Badge variant="outline">Revoked</Badge>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={busy}
+                            onClick={() => void handleRevokeApiKey(k.id)}
+                          >
+                            Revoke
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>

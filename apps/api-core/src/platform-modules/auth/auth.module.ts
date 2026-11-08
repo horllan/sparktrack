@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Inject, Module, Param, ParseUUIDPipe, Patch, Post, ServiceUnavailableException } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Inject, Module, Param, ParseUUIDPipe, Patch, Post, ServiceUnavailableException } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { LearnerOnboardingSchema, ConsentVerificationSchema, LearnerStageSchema, LearningGoalSchema } from '@sparktrack/contracts';
 import { ledgerQueries, type SparkTrackDatabase } from '@sparktrack/db';
@@ -59,6 +59,21 @@ const RegisterChildSchema = z.object({
   if (hasReachedAdultAge(learner.dateOfBirth)) {
     ctx.addIssue({ code: 'custom', path: ['dateOfBirth'], message: 'Adult learners should create their own learner account.' });
   }
+});
+
+const RegisterChildrenBulkSchema = z.object({
+  students: z.array(RegisterChildSchema).min(1).max(100),
+});
+
+const IssueApiKeySchema = z.object({
+  label: z.string().min(2).max(120),
+  scopes: z
+    .array(z.enum(['intelligence:read', 'evidence:write', 'portfolio:verify', 'analytics:read']))
+    .min(1)
+    .max(6)
+    .default(['intelligence:read', 'evidence:write']),
+  rateLimitPerMinute: z.number().int().min(10).max(10000).default(120),
+  expiresInDays: z.number().int().min(1).max(365).optional(),
 });
 
 const BootstrapAdminSchema = z.object({
@@ -139,6 +154,35 @@ class AuthController {
   @ApiOperation({ summary: 'Register an under-18 learner under a Parent or School/Organisation' })
   registerChild(@CurrentUser() user: AuthUser, @Body() body: unknown) {
     return this.auth.registerChild(user, RegisterChildSchema.parse(body));
+  }
+
+  @Post('children/bulk')
+  @Roles('PARENT', 'SCHOOL_ADMIN', 'ORG_PARTNER', 'SUPER_ADMIN')
+  @ApiOperation({ summary: 'Bulk register up to 100 students from a school cohort roster or CSV import' })
+  registerChildrenBulk(@CurrentUser() user: AuthUser, @Body() body: unknown) {
+    const parsed = RegisterChildrenBulkSchema.parse(body);
+    return this.auth.registerChildrenBulk(user, parsed.students);
+  }
+
+  @Get('api-keys')
+  @Roles('SCHOOL_ADMIN', 'ORG_PARTNER', 'SUPER_ADMIN')
+  @ApiOperation({ summary: 'List Enterprise Headless Intelligence API keys for the organisation or operator' })
+  listApiKeys(@CurrentUser() user: AuthUser) {
+    return this.auth.listApiKeys(user);
+  }
+
+  @Post('api-keys')
+  @Roles('SCHOOL_ADMIN', 'ORG_PARTNER', 'SUPER_ADMIN')
+  @ApiOperation({ summary: 'Issue a new scoped Enterprise Headless Intelligence API key (secret returned once)' })
+  issueApiKey(@CurrentUser() user: AuthUser, @Body() body: unknown) {
+    return this.auth.issueApiKey(user, IssueApiKeySchema.parse(body));
+  }
+
+  @Delete('api-keys/:keyId')
+  @Roles('SCHOOL_ADMIN', 'ORG_PARTNER', 'SUPER_ADMIN')
+  @ApiOperation({ summary: 'Immediately revoke an Enterprise Headless Intelligence API key' })
+  revokeApiKey(@CurrentUser() user: AuthUser, @Param('keyId', ParseUUIDPipe) keyId: string) {
+    return this.auth.revokeApiKey(user, keyId);
   }
 
   @Post('admin/bootstrap')

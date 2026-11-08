@@ -13,7 +13,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { accessQueries, consentQueries, onboardingQueries } from '@sparktrack/db';
+import { accessQueries, apiKeyQueries, consentQueries, onboardingQueries } from '@sparktrack/db';
 import type { Kysely } from 'kysely';
 import type { ConsentVerification, LearnerOnboarding } from '@sparktrack/contracts';
 import type { SparkTrackDatabase } from '@sparktrack/db';
@@ -361,6 +361,90 @@ export class AuthPlatformService {
 
   async listInstitutionalAccounts() {
     return onboardingQueries.listInstitutionalAndMentorAccounts(this.db);
+  }
+
+  async registerChildrenBulk(
+    user: AuthUser,
+    students: Array<{
+      fullName: string;
+      dateOfBirth: string;
+      educationStage: string;
+      schoolName?: string;
+      declaredInterests: string[];
+      guardianName?: string;
+      guardianPhone?: string;
+      guardianEmail?: string;
+    }>,
+  ) {
+    const created: Array<{
+      learnerId: string;
+      fullName: string;
+      educationStage: string;
+      consentStatus: string;
+      accessCode: string;
+    }> = [];
+    const errors: Array<{ index: number; fullName: string; reason: string }> = [];
+
+    for (let i = 0; i < students.length; i++) {
+      const s = students[i]!;
+      try {
+        const res = await this.registerChild(user, s);
+        if (res.status === 'created') {
+          created.push({
+            learnerId: res.learnerId,
+            fullName: res.fullName,
+            educationStage: res.educationStage,
+            consentStatus: res.consentStatus,
+            accessCode: res.accessCode,
+          });
+        }
+      } catch (err) {
+        errors.push({
+          index: i + 1,
+          fullName: s.fullName,
+          reason: err instanceof Error ? err.message : 'Could not register student',
+        });
+      }
+    }
+
+    return {
+      totalSubmitted: students.length,
+      createdCount: created.length,
+      errorCount: errors.length,
+      created,
+      errors,
+    };
+  }
+
+  async listApiKeys(user: AuthUser) {
+    return apiKeyQueries.listKeys(this.db, user);
+  }
+
+  async issueApiKey(
+    user: AuthUser,
+    payload: {
+      label: string;
+      scopes: string[];
+      rateLimitPerMinute: number;
+      expiresInDays?: number;
+    },
+  ) {
+    return apiKeyQueries.issueKey(this.db, {
+      organisationId: user.organisationId,
+      createdBy: user.id,
+      label: payload.label,
+      scopes: payload.scopes,
+      rateLimitPerMinute: payload.rateLimitPerMinute,
+      expiresInDays: payload.expiresInDays,
+    });
+  }
+
+  async revokeApiKey(user: AuthUser, keyId: string) {
+    const res = await apiKeyQueries.revokeKey(this.db, keyId, user);
+    if (res.status === 'not_found') {
+      throw new NotFoundException('API key not found or already revoked.');
+    }
+    return res;
   }
 
   private getAdminSecret(): string {

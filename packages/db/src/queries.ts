@@ -2138,3 +2138,209 @@ export const supportQueries = {
     };
   },
 };
+
+export const apiKeyQueries = {
+  async issueKey(
+    db: Db,
+    p: {
+      organisationId: string | null;
+      createdBy: string;
+      label: string;
+      scopes: string[];
+      rateLimitPerMinute: number;
+      expiresInDays?: number;
+    },
+  ) {
+    const rawRandom = randomBytes(24).toString('base64url');
+    const rawKey = `spk_live_${rawRandom}`;
+    const keyPrefix = rawKey.slice(0, 16);
+    const keyHash = createHash('sha256').update(rawKey).digest('hex');
+    const expiresAt =
+      typeof p.expiresInDays === 'number' && p.expiresInDays > 0
+        ? new Date(Date.now() + p.expiresInDays * 86_400_000).toISOString()
+        : null;
+
+    const r = await sql<{
+      id: string;
+      label: string;
+      key_prefix: string;
+      scopes: string[];
+      rate_limit_per_minute: number;
+      created_at: Date;
+      expires_at: Date | null;
+    }>`
+      INSERT INTO core.api_keys (
+        organisation_id,
+        created_by,
+        label,
+        key_prefix,
+        key_hash,
+        scopes,
+        rate_limit_per_minute,
+        expires_at
+      )
+      VALUES (
+        ${p.organisationId}::uuid,
+        ${p.createdBy}::uuid,
+        ${p.label.trim()},
+        ${keyPrefix},
+        ${keyHash},
+        ${sql.val(p.scopes)}::text[],
+        ${p.rateLimitPerMinute},
+        ${expiresAt}::timestamptz
+      )
+      RETURNING id, label, key_prefix, scopes, rate_limit_per_minute, created_at, expires_at
+    `.execute(db);
+
+    const row = r.rows[0]!;
+    return {
+      id: row.id,
+      label: row.label,
+      keyPrefix: row.key_prefix,
+      secretKey: rawKey,
+      scopes: row.scopes,
+      rateLimitPerMinute: row.rate_limit_per_minute,
+      createdAt: row.created_at.toISOString(),
+      expiresAt: row.expires_at ? row.expires_at.toISOString() : null,
+    };
+  },
+
+  async listKeys(db: Db, actor: { id: string; role: string; organisationId: string | null }) {
+    const r =
+      actor.role === 'SUPER_ADMIN'
+        ? await sql<{
+            id: string;
+            label: string;
+            key_prefix: string;
+            scopes: string[];
+            rate_limit_per_minute: number;
+            organisation_name: string | null;
+            last_used_at: Date | null;
+            expires_at: Date | null;
+            revoked_at: Date | null;
+            created_at: Date;
+          }>`
+            SELECT
+              k.id,
+              k.label,
+              k.key_prefix,
+              k.scopes,
+              k.rate_limit_per_minute,
+              o.name AS organisation_name,
+              k.last_used_at,
+              k.expires_at,
+              k.revoked_at,
+              k.created_at
+            FROM core.api_keys k
+            LEFT JOIN core.organisations o ON o.id = k.organisation_id
+            ORDER BY k.created_at DESC
+            LIMIT 100
+          `.execute(db)
+        : await sql<{
+            id: string;
+            label: string;
+            key_prefix: string;
+            scopes: string[];
+            rate_limit_per_minute: number;
+            organisation_name: string | null;
+            last_used_at: Date | null;
+            expires_at: Date | null;
+            revoked_at: Date | null;
+            created_at: Date;
+          }>`
+            SELECT
+              k.id,
+              k.label,
+              k.key_prefix,
+              k.scopes,
+              k.rate_limit_per_minute,
+              o.name AS organisation_name,
+              k.last_used_at,
+              k.expires_at,
+              k.revoked_at,
+              k.created_at
+            FROM core.api_keys k
+            LEFT JOIN core.organisations o ON o.id = k.organisation_id
+            WHERE k.created_by = ${actor.id}::uuid
+               OR (${actor.organisationId}::uuid IS NOT NULL AND k.organisation_id = ${actor.organisationId}::uuid)
+            ORDER BY k.created_at DESC
+            LIMIT 100
+          `.execute(db);
+
+    return r.rows.map((row) => ({
+      id: row.id,
+      label: row.label,
+      keyPrefix: row.key_prefix,
+      scopes: row.scopes,
+      rateLimitPerMinute: row.rate_limit_per_minute,
+      organisationName: row.organisation_name,
+      lastUsedAt: row.last_used_at ? row.last_used_at.toISOString() : null,
+      expiresAt: row.expires_at ? row.expires_at.toISOString() : null,
+      revokedAt: row.revoked_at ? row.revoked_at.toISOString() : null,
+      createdAt: row.created_at.toISOString(),
+    }));
+  },
+
+  async revokeKey(db: Db, keyId: string, actor: { id: string; role: string; organisationId: string | null }) {
+    const r =
+      actor.role === 'SUPER_ADMIN'
+        ? await sql<{ id: string }>`
+            UPDATE core.api_keys
+            SET revoked_at = NOW()
+            WHERE id = ${keyId}::uuid AND revoked_at IS NULL
+            RETURNING id
+          `.execute(db)
+        : await sql<{ id: string }>`
+            UPDATE core.api_keys
+            SET revoked_at = NOW()
+            WHERE id = ${keyId}::uuid
+              AND revoked_at IS NULL
+              AND (
+                created_by = ${actor.id}::uuid
+                OR (${actor.organisationId}::uuid IS NOT NULL AND organisation_id = ${actor.organisationId}::uuid)
+              )
+            RETURNING id
+          `.execute(db);
+    return r.rows[0] ? { status: 'revoked' as const, id: r.rows[0].id } : { status: 'not_found' as const };
+  },
+
+  async verifyKey(db: Db, rawKey: string) {
+    if (!rawKey.startsWith('spk_live_') || rawKey.length < 24) return null;
+    const keyHash = createHash('sha256').update(rawKey).digest('hex');
+    const r = await sql<{
+      id: string;
+      organisation_id: string | null;
+      created_by: string;
+      creator_role: string;
+      scopes: string[];
+      rate_limit_per_minute: number;
+    }>`
+      UPDATE core.api_keys k
+      SET last_used_at = NOW()
+      FROM core.users u
+      WHERE k.key_hash = ${keyHash}
+        AND k.revoked_at IS NULL
+        AND (k.expires_at IS NULL OR k.expires_at > NOW())
+        AND u.id = k.created_by
+        AND u.is_active = TRUE
+      RETURNING
+        k.id,
+        k.organisation_id,
+        k.created_by,
+        u.role::text AS creator_role,
+        k.scopes,
+        k.rate_limit_per_minute
+    `.execute(db);
+
+    const row = r.rows[0];
+    if (!row) return null;
+    return {
+      keyId: row.id,
+      userId: row.created_by,
+      role: row.creator_role,
+      organisationId: row.organisation_id,
+      scopes: row.scopes,
+      rateLimitPerMinute: row.rate_limit_per_minute,
+    };
+  },
+};
