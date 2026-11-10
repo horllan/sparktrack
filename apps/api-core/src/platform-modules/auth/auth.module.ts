@@ -82,6 +82,10 @@ const BootstrapAdminSchema = z.object({
   adminSecret: z.string().min(32).max(256),
 });
 
+const DataGovernanceScanSchema = z.object({
+  sampleText: z.string().min(3).max(4000),
+});
+
 export const IssueInvitationSchema = z.object({
   email: z.string().email(),
   role: z.enum(['SCHOOL_ADMIN', 'ORG_PARTNER', 'MENTOR']),
@@ -183,6 +187,21 @@ class AuthController {
   @ApiOperation({ summary: 'Immediately revoke an Enterprise Headless Intelligence API key' })
   revokeApiKey(@CurrentUser() user: AuthUser, @Param('keyId', ParseUUIDPipe) keyId: string) {
     return this.auth.revokeApiKey(user, keyId);
+  }
+
+  @Get('admin/data-governance')
+  @Roles('SUPER_ADMIN')
+  @ApiOperation({ summary: 'Imperva-aligned Data Discovery, Classification Catalog, Data Mesh & Activity Monitoring overview' })
+  dataGovernanceOverview() {
+    return this.auth.dataGovernanceOverview();
+  }
+
+  @Post('admin/data-governance/scan')
+  @Roles('SUPER_ADMIN')
+  @ApiOperation({ summary: 'Scan unstructured text for sensitive PII and apply dynamic redaction' })
+  scanGovernanceSample(@CurrentUser() user: AuthUser, @Body() body: unknown) {
+    const parsed = DataGovernanceScanSchema.parse(body);
+    return this.auth.scanGovernanceSample(user, parsed.sampleText);
   }
 
   @Post('admin/bootstrap')

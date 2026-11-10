@@ -2,7 +2,7 @@ import { ForbiddenException, Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import type { Kysely } from 'kysely';
-import { evidenceReadQueries, ledgerQueries, rubricQueries } from '@sparktrack/db';
+import { discoverAndRedactPii, evidenceReadQueries, governanceQueries, ledgerQueries, rubricQueries } from '@sparktrack/db';
 import type { SparkTrackDatabase } from '@sparktrack/db';
 import type { EvidenceSyncPayload, MentorMicroRubric } from '@sparktrack/contracts';
 import { KYSELY } from '../../common/database/database.module';
@@ -58,6 +58,24 @@ export class EvidenceEngineService {
 
     const isMentor = user.role === 'MENTOR';
     const privileged = isMentor || user.role === 'SUPER_ADMIN';
+    const dlpScan = discoverAndRedactPii(p.description);
+    if (dlpScan.findings.length > 0) {
+      await governanceQueries
+        .logActivity(this.db, {
+          actorId: user.id,
+          actorRole: user.role,
+          organisationId: user.organisationId,
+          actionType: 'EVIDENCE_UNSTRUCTURED_PII_REDACTION',
+          resourceDomain: 'EVIDENCE_VAULT',
+          classificationAccessed: 'TIER_3_CONFIDENTIAL_PII',
+          recordsReturned: 1,
+          maskingApplied: true,
+          outcome: 'PII_DISCOVERY_REDACTED',
+          metadata: { findings: dlpScan.findings, clientSyncId: p.clientSyncId },
+        })
+        .catch(() => null);
+    }
+
     const result = await ledgerQueries.syncAndSeal(this.db, {
       clientSyncId: p.clientSyncId,
       learnerId: p.learnerId,
@@ -65,7 +83,7 @@ export class EvidenceEngineService {
       activityNodeId: p.activityNodeId,
       artifactType: p.artifactType,
       title: p.title,
-      description: p.description,
+      description: dlpScan.findings.length > 0 ? dlpScan.sanitizedText : p.description,
       storageR2Keys: p.storageR2Keys,
       externalUrls: p.externalUrls,
       payload: p.payload,
@@ -90,6 +108,23 @@ export class EvidenceEngineService {
     await this.assertActiveConsent(r.learnerId);
     const skillCodes = r.artifactId ? await rubricQueries.artifactSkillCodes(this.db, r.artifactId, r.learnerId) : [];
     const capturedAt = new Date(r.capturedOfflineAt);
+    const rubricDlp = discoverAndRedactPii(r.overallComment);
+    if (rubricDlp.findings.length > 0) {
+      await governanceQueries
+        .logActivity(this.db, {
+          actorId: user.id,
+          actorRole: user.role,
+          organisationId: user.organisationId,
+          actionType: 'RUBRIC_UNSTRUCTURED_PII_REDACTION',
+          resourceDomain: 'EVIDENCE_VAULT',
+          classificationAccessed: 'TIER_3_CONFIDENTIAL_PII',
+          recordsReturned: 1,
+          maskingApplied: true,
+          outcome: 'PII_DISCOVERY_REDACTED',
+          metadata: { findings: rubricDlp.findings, clientSyncId: r.clientSyncId },
+        })
+        .catch(() => null);
+    }
 
     const result = await ledgerQueries.syncAndSeal(this.db, {
       clientSyncId: r.clientSyncId,
@@ -98,7 +133,7 @@ export class EvidenceEngineService {
       activityNodeId: r.activityNodeId,
       artifactType: 'MENTOR_OBSERVATION',
       title: 'Mentor micro-rubric',
-      description: r.overallComment,
+      description: rubricDlp.findings.length > 0 ? rubricDlp.sanitizedText : r.overallComment,
       storageR2Keys: [],
       externalUrls: [],
       payload: { schema_version: '1.0', rubric_for_artifact: r.artifactId ?? null, skill_codes: skillCodes },

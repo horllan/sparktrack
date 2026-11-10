@@ -13,7 +13,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { accessQueries, apiKeyQueries, consentQueries, onboardingQueries } from '@sparktrack/db';
+import { accessQueries, apiKeyQueries, consentQueries, governanceQueries, onboardingQueries } from '@sparktrack/db';
 import type { Kysely } from 'kysely';
 import type { ConsentVerification, LearnerOnboarding } from '@sparktrack/contracts';
 import type { SparkTrackDatabase } from '@sparktrack/db';
@@ -243,6 +243,25 @@ export class AuthPlatformService {
       throw new ForbiddenException('Your account is not assigned to an organisation.');
     }
     const learners = await onboardingQueries.listManagedLearners(this.db, user);
+    let velocityFlagged = false;
+    if (this.cache) {
+      const rl = await this.cache.checkRateLimit(`sparktrack:dam:velocity:roster:${user.id}`, 30, 60);
+      velocityFlagged = !rl.allowed;
+    }
+    await governanceQueries
+      .logActivity(this.db, {
+        actorId: user.id,
+        actorRole: user.role,
+        organisationId: user.organisationId,
+        actionType: 'ROSTER_PII_QUERY',
+        resourceDomain: 'CORE_IDENTITY',
+        classificationAccessed: 'TIER_3_CONFIDENTIAL_PII',
+        recordsReturned: learners.length,
+        maskingApplied: user.role !== 'PARENT',
+        velocityFlagged,
+        outcome: velocityFlagged ? 'HIGH_VELOCITY_ALERT' : 'ALLOWED',
+      })
+      .catch(() => null);
     if (user.role === 'PARENT') return learners;
     return learners.map((learner) => ({ ...learner, whatsappOptIn: false }));
   }
@@ -429,7 +448,7 @@ export class AuthPlatformService {
       expiresInDays?: number;
     },
   ) {
-    return apiKeyQueries.issueKey(this.db, {
+    const issued = await apiKeyQueries.issueKey(this.db, {
       organisationId: user.organisationId,
       createdBy: user.id,
       label: payload.label,
@@ -437,6 +456,21 @@ export class AuthPlatformService {
       rateLimitPerMinute: payload.rateLimitPerMinute,
       expiresInDays: payload.expiresInDays,
     });
+    await governanceQueries
+      .logActivity(this.db, {
+        actorId: user.id,
+        actorRole: user.role,
+        organisationId: user.organisationId,
+        actionType: 'ENTERPRISE_API_KEY_ISSUED',
+        resourceDomain: 'CORE_IDENTITY',
+        classificationAccessed: 'TIER_4_RESTRICTED_MINOR_SECRETS',
+        recordsReturned: 1,
+        maskingApplied: true,
+        outcome: 'TOKENIZED_SHA256',
+        metadata: { keyPrefix: issued.keyPrefix, scopes: issued.scopes },
+      })
+      .catch(() => null);
+    return issued;
   }
 
   async revokeApiKey(user: AuthUser, keyId: string) {
@@ -444,7 +478,29 @@ export class AuthPlatformService {
     if (res.status === 'not_found') {
       throw new NotFoundException('API key not found or already revoked.');
     }
+    await governanceQueries
+      .logActivity(this.db, {
+        actorId: user.id,
+        actorRole: user.role,
+        organisationId: user.organisationId,
+        actionType: 'ENTERPRISE_API_KEY_REVOKED',
+        resourceDomain: 'CORE_IDENTITY',
+        classificationAccessed: 'TIER_4_RESTRICTED_MINOR_SECRETS',
+        recordsReturned: 1,
+        maskingApplied: true,
+        outcome: 'REVOKED',
+        metadata: { keyId },
+      })
+      .catch(() => null);
     return res;
+  }
+
+  async dataGovernanceOverview() {
+    return governanceQueries.overview(this.db);
+  }
+
+  async scanGovernanceSample(user: AuthUser, sampleText: string) {
+    return governanceQueries.inspectAndMaskSample(this.db, user, sampleText);
   }
 
   private getAdminSecret(): string {

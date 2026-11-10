@@ -756,8 +756,8 @@ export const onboardingQueries = {
       userId: row.id,
       role: row.role,
       fullName: row.full_name,
-      email: row.email,
-      phoneNumber: row.phone_number,
+      email: maskEmail(row.email),
+      phoneNumber: maskPhone(row.phone_number),
       organisationId: row.organisation_id,
       organisationName: row.organisation_name,
       isActive: row.is_active,
@@ -765,6 +765,52 @@ export const onboardingQueries = {
     }));
   },
 };
+
+export function maskPhone(phone: string | null | undefined): string | null {
+  if (!phone || phone.trim().length < 4) return phone ?? null;
+  const trimmed = phone.trim();
+  if (trimmed.length <= 6) {
+    return `${trimmed.slice(0, 2)}***${trimmed.slice(-2)}`;
+  }
+  return `${trimmed.slice(0, 4)}••••${trimmed.slice(-3)}`;
+}
+
+export function maskEmail(email: string | null | undefined): string | null {
+  if (!email || !email.includes('@')) return email ?? null;
+  const [local, domain] = email.trim().split('@');
+  if (!local || !domain) return email;
+  const prefix = local.slice(0, Math.min(2, local.length));
+  return `${prefix}•••@${domain}`;
+}
+
+export function discoverAndRedactPii(text: string | null | undefined): {
+  sanitizedText: string;
+  findings: string[];
+} {
+  if (!text) return { sanitizedText: '', findings: [] };
+  const findings: string[] = [];
+  let sanitized = text;
+
+  const emailPattern = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g;
+  if (emailPattern.test(sanitized)) {
+    findings.push('EMAIL_ADDRESS');
+    sanitized = sanitized.replace(emailPattern, '[Redacted Email]');
+  }
+
+  const ninOrBvnPattern = /\b\d{11}\b/g;
+  if (ninOrBvnPattern.test(sanitized)) {
+    findings.push('NATIONAL_ID_OR_PHONE_11D');
+    sanitized = sanitized.replace(ninOrBvnPattern, '[Redacted Contact/ID]');
+  }
+
+  const phonePattern = /(?:\+?\d{1,3}[\s-]?)?(?:\(?\d{3}\)?[\s-]?\d{3,4}[\s-]?\d{4})\b/g;
+  if (phonePattern.test(sanitized)) {
+    findings.push('PHONE_NUMBER');
+    sanitized = sanitized.replace(phonePattern, '[Redacted Phone]');
+  }
+
+  return { sanitizedText: sanitized, findings };
+}
 
 export const consentQueries = {
   async recipient(db: Db, learnerId: string) {
@@ -2341,6 +2387,218 @@ export const apiKeyQueries = {
       organisationId: row.organisation_id,
       scopes: row.scopes,
       rateLimitPerMinute: row.rate_limit_per_minute,
+    };
+  },
+};
+
+export const governanceQueries = {
+  async logActivity(
+    db: Db,
+    p: {
+      actorId?: string | null;
+      actorRole: string;
+      organisationId?: string | null;
+      actionType: string;
+      resourceDomain: 'CORE_IDENTITY' | 'EVIDENCE_VAULT' | 'INTELLIGENCE_CORE' | 'ANALYTICS_PRODUCTS';
+      classificationAccessed:
+        | 'TIER_1_PUBLIC'
+        | 'TIER_2_INTERNAL'
+        | 'TIER_3_CONFIDENTIAL_PII'
+        | 'TIER_4_RESTRICTED_MINOR_SECRETS';
+      recordsReturned?: number;
+      maskingApplied?: boolean;
+      velocityFlagged?: boolean;
+      outcome?: string;
+      metadata?: Record<string, unknown>;
+    },
+  ) {
+    await sql`
+      INSERT INTO governance.data_activity_audit (
+        actor_id,
+        actor_role,
+        organisation_id,
+        action_type,
+        resource_domain,
+        classification_accessed,
+        records_returned,
+        masking_applied,
+        velocity_flagged,
+        outcome,
+        metadata
+      )
+      VALUES (
+        ${p.actorId ?? null}::uuid,
+        ${p.actorRole},
+        ${p.organisationId ?? null}::uuid,
+        ${p.actionType},
+        ${p.resourceDomain}::governance.data_mesh_domain,
+        ${p.classificationAccessed}::governance.data_classification_tier,
+        ${p.recordsReturned ?? 0},
+        ${p.maskingApplied ?? true},
+        ${p.velocityFlagged ?? false},
+        ${p.outcome ?? 'ALLOWED'},
+        ${JSON.stringify(p.metadata ?? {})}::jsonb
+      )
+    `.execute(db);
+  },
+
+  async overview(db: Db) {
+    const [catalogRes, discoveryRes, meshCountRes, damRes] = await Promise.all([
+      sql<{
+        id: string;
+        schema_name: string;
+        table_name: string;
+        column_name: string;
+        mesh_domain: string;
+        classification_tier: string;
+        protection_technique: string;
+        data_steward_role: string;
+        retention_policy: string;
+        ndpa_lawful_basis: string;
+        contains_minor_pii: boolean;
+        description: string;
+      }>`
+        SELECT
+          id,
+          schema_name,
+          table_name,
+          column_name,
+          mesh_domain::text,
+          classification_tier::text,
+          protection_technique::text,
+          data_steward_role,
+          retention_policy,
+          ndpa_lawful_basis,
+          contains_minor_pii,
+          description
+        FROM governance.data_catalog
+        ORDER BY classification_tier DESC, schema_name, table_name, column_name
+      `.execute(db),
+      sql<{
+        total_columns: string;
+        cataloged_columns: string;
+        minor_pii_columns: string;
+      }>`
+        SELECT
+          COUNT(*)::text AS total_columns,
+          COUNT(*) FILTER (WHERE discovery_status = 'CATALOGED')::text AS cataloged_columns,
+          COUNT(*) FILTER (WHERE contains_minor_pii = TRUE)::text AS minor_pii_columns
+        FROM governance.vw_schema_discovery
+      `.execute(db),
+      sql<{ total_products: string }>`
+        SELECT COUNT(*)::text AS total_products
+        FROM governance.dp_verified_talent_mesh
+      `.execute(db),
+      sql<{
+        audit_seq: string;
+        actor_role: string;
+        action_type: string;
+        resource_domain: string;
+        classification_accessed: string;
+        records_returned: number;
+        masking_applied: boolean;
+        velocity_flagged: boolean;
+        outcome: string;
+        recorded_at: Date;
+      }>`
+        SELECT
+          audit_seq::text,
+          actor_role,
+          action_type,
+          resource_domain::text,
+          classification_accessed::text,
+          records_returned,
+          masking_applied,
+          velocity_flagged,
+          outcome,
+          recorded_at
+        FROM governance.data_activity_audit
+        ORDER BY audit_seq DESC
+        LIMIT 25
+      `.execute(db),
+    ]);
+
+    const disc = discoveryRes.rows[0];
+    const catalog = catalogRes.rows.map((r) => ({
+      id: r.id,
+      schemaName: r.schema_name,
+      tableName: r.table_name,
+      columnName: r.column_name,
+      meshDomain: r.mesh_domain,
+      classificationTier: r.classification_tier,
+      protectionTechnique: r.protection_technique,
+      dataStewardRole: r.data_steward_role,
+      retentionPolicy: r.retention_policy,
+      ndpaLawfulBasis: r.ndpa_lawful_basis,
+      containsMinorPii: r.contains_minor_pii,
+      description: r.description,
+    }));
+
+    const tierBreakdown = {
+      TIER_1_PUBLIC: catalog.filter((c) => c.classificationTier === 'TIER_1_PUBLIC').length,
+      TIER_2_INTERNAL: catalog.filter((c) => c.classificationTier === 'TIER_2_INTERNAL').length,
+      TIER_3_CONFIDENTIAL_PII: catalog.filter((c) => c.classificationTier === 'TIER_3_CONFIDENTIAL_PII').length,
+      TIER_4_RESTRICTED_MINOR_SECRETS: catalog.filter(
+        (c) => c.classificationTier === 'TIER_4_RESTRICTED_MINOR_SECRETS',
+      ).length,
+    };
+
+    const domainBreakdown = {
+      CORE_IDENTITY: catalog.filter((c) => c.meshDomain === 'CORE_IDENTITY').length,
+      EVIDENCE_VAULT: catalog.filter((c) => c.meshDomain === 'EVIDENCE_VAULT').length,
+      INTELLIGENCE_CORE: catalog.filter((c) => c.meshDomain === 'INTELLIGENCE_CORE').length,
+      ANALYTICS_PRODUCTS: catalog.filter((c) => c.meshDomain === 'ANALYTICS_PRODUCTS').length,
+    };
+
+    return {
+      discovery: {
+        totalDatabaseColumns: Number(disc?.total_columns ?? 0),
+        catalogedSensitiveAssets: Number(disc?.cataloged_columns ?? catalog.length),
+        minorProtectedColumns: Number(disc?.minor_pii_columns ?? 0),
+        verifiedMeshTalentProducts: Number(meshCountRes.rows[0]?.total_products ?? 0),
+      },
+      tierBreakdown,
+      domainBreakdown,
+      catalog,
+      recentActivity: damRes.rows.map((row) => ({
+        auditSeq: Number(row.audit_seq),
+        actorRole: row.actor_role,
+        actionType: row.action_type,
+        resourceDomain: row.resource_domain,
+        classificationAccessed: row.classification_accessed,
+        recordsReturned: row.records_returned,
+        maskingApplied: row.masking_applied,
+        velocityFlagged: row.velocity_flagged,
+        outcome: row.outcome,
+        recordedAt: row.recorded_at.toISOString(),
+      })),
+    };
+  },
+
+  async inspectAndMaskSample(
+    db: Db,
+    actor: { id: string; role: string; organisationId: string | null },
+    sampleText: string,
+  ) {
+    const { sanitizedText, findings } = discoverAndRedactPii(sampleText);
+    await this.logActivity(db, {
+      actorId: actor.id,
+      actorRole: actor.role,
+      organisationId: actor.organisationId,
+      actionType: 'DLP_UNSTRUCTURED_PII_SCAN',
+      resourceDomain: 'EVIDENCE_VAULT',
+      classificationAccessed:
+        findings.length > 0 ? 'TIER_3_CONFIDENTIAL_PII' : 'TIER_1_PUBLIC',
+      recordsReturned: 1,
+      maskingApplied: findings.length > 0,
+      outcome: findings.length > 0 ? 'PII_DISCOVERY_REDACTED' : 'CLEAN',
+      metadata: { findingsCount: findings.length, findings },
+    });
+    return {
+      originalLength: sampleText.length,
+      sanitizedText,
+      findings,
+      piiDetected: findings.length > 0,
     };
   },
 };
