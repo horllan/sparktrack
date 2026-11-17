@@ -30,68 +30,158 @@ export default function InternalAdminAccessPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [awaitingEmailConfirm, setAwaitingEmailConfirm] = useState(false);
 
-  async function handleAdminAuth() {
+  async function bootstrapWithToken(token: string) {
+    const res = await fetch(`${API_URL}/v1/auth/admin/bootstrap`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        fullName: fullName.trim() || 'SparkTrack Operations Admin',
+        email: email.trim(),
+        adminSecret: adminSecret.trim(),
+      }),
+    });
+    if (!res.ok) {
+      const body = (await res.json().catch(() => null)) as { message?: string } | null;
+      throw new Error(body?.message ?? 'Invalid operator security key.');
+    }
+  }
+
+  async function handleResendConfirmation() {
+    if (!email.trim()) return;
     setBusy(true);
     setError('');
     setNotice('');
     try {
       const supabase = createClient();
-      const authRes =
-        mode === 'bootstrap'
-          ? await supabase.auth.signUp({
-              email: email.trim(),
-              password,
-              options: { emailRedirectTo: window.location.href },
-            })
-          : await supabase.auth.signInWithPassword({
-              email: email.trim(),
-              password,
-            });
+      const { error: resendErr } = await supabase.auth.resend({
+        type: 'signup',
+        email: email.trim(),
+        options: { emailRedirectTo: window.location.href },
+      });
+      if (resendErr) throw resendErr;
+      setNotice('Confirmation email re-sent. Check your inbox (and spam folder), then click Staff Sign In.');
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? e.message
+          : 'Could not resend confirmation email. You can also confirm the user directly in Supabase Dashboard → Authentication → Users.',
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
 
-      if (authRes.error) throw authRes.error;
-      const token = authRes.data.session?.access_token;
-      if (!token) {
-        setMode('signin');
-        setNotice('Confirm your operator email address first, then return here to complete Super Admin provisioning.');
+  async function handleAdminAuth(e?: React.FormEvent) {
+    e?.preventDefault();
+    setBusy(true);
+    setError('');
+    setNotice('');
+    setAwaitingEmailConfirm(false);
+    try {
+      const supabase = createClient();
+      const trimmedEmail = email.trim();
+      const trimmedSecret = adminSecret.trim();
+
+      if (mode === 'bootstrap') {
+        if (trimmedSecret.length < 32) {
+          throw new Error('The operator security key must be at least 32 characters.');
+        }
+
+        // Attempt 1: Direct auto-confirmed operator provisioning via backend Admin API
+        const regRes = await fetch(`${API_URL}/v1/auth/admin/register-operator`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fullName: fullName.trim() || 'SparkTrack Operations Admin',
+            email: trimmedEmail,
+            password,
+            adminSecret: trimmedSecret,
+          }),
+        }).catch(() => null);
+
+        if (regRes?.ok) {
+          const signInRes = await supabase.auth.signInWithPassword({
+            email: trimmedEmail,
+            password,
+          });
+          if (signInRes.error) throw signInRes.error;
+          router.push('/admin/dashboard');
+          return;
+        }
+
+        if (regRes && regRes.status === 403) {
+          const body = (await regRes.json().catch(() => null)) as { message?: string } | null;
+          throw new Error(body?.message ?? 'Invalid operator security key.');
+        }
+
+        // Fallback when SUPABASE_SERVICE_ROLE_KEY is not configured:
+        // Try signing in first in case the account already exists, otherwise sign up.
+        let token: string | undefined;
+        const existingSignIn = await supabase.auth.signInWithPassword({
+          email: trimmedEmail,
+          password,
+        });
+        if (!existingSignIn.error && existingSignIn.data.session?.access_token) {
+          token = existingSignIn.data.session.access_token;
+        } else {
+          const signUpRes = await supabase.auth.signUp({
+            email: trimmedEmail,
+            password,
+            options: { emailRedirectTo: window.location.href },
+          });
+          if (signUpRes.error) throw signUpRes.error;
+          token = signUpRes.data.session?.access_token;
+        }
+
+        if (!token) {
+          setAwaitingEmailConfirm(true);
+          setMode('signin');
+          setNotice(
+            'Account created, but Supabase requires email confirmation before issuing a session. Check your inbox (or confirm the user in Supabase Dashboard → Authentication → Users), then sign in here with your Security Key.',
+          );
+          return;
+        }
+
+        await bootstrapWithToken(token);
+        router.push('/admin/dashboard');
         return;
       }
 
-      if (mode === 'bootstrap') {
-        const res = await fetch(`${API_URL}/v1/auth/admin/bootstrap`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            fullName: fullName.trim() || 'SparkTrack Operations Admin',
-            email: email.trim(),
-            adminSecret: adminSecret.trim(),
-          }),
-        });
-        if (!res.ok) {
-          const body = (await res.json().catch(() => null)) as { message?: string } | null;
-          throw new Error(body?.message ?? 'Admin bootstrap rejected.');
+      // Staff Sign In mode
+      const authRes = await supabase.auth.signInWithPassword({
+        email: trimmedEmail,
+        password,
+      });
+      if (authRes.error) {
+        if (authRes.error.message.toLowerCase().includes('email not confirmed')) {
+          setAwaitingEmailConfirm(true);
+          throw new Error(
+            'Your email is not confirmed yet. Click "Resend Confirmation Email" below or confirm the user in Supabase Dashboard → Authentication → Users.',
+          );
         }
+        throw authRes.error;
+      }
+
+      const token = authRes.data.session?.access_token;
+      if (!token) throw new Error('Sign in succeeded, but no active session token was returned.');
+
+      if (trimmedSecret) {
+        await bootstrapWithToken(token);
       } else {
-        // If signing in and adminSecret was also provided, elevate/verify role
-        if (adminSecret.trim()) {
-          const res = await fetch(`${API_URL}/v1/auth/admin/bootstrap`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({
-              fullName: fullName.trim() || 'SparkTrack Operations Admin',
-              email: email.trim(),
-              adminSecret: adminSecret.trim(),
-            }),
-          });
-          if (!res.ok) {
-            const body = (await res.json().catch(() => null)) as { message?: string } | null;
-            throw new Error(body?.message ?? 'Invalid operator security key.');
+        const meRes = await fetch(`${API_URL}/v1/auth/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }).catch(() => null);
+        if (meRes?.ok) {
+          const me = (await meRes.json()) as { role?: string };
+          if (me.role !== 'SUPER_ADMIN' && me.role !== 'SCHOOL_ADMIN' && me.role !== 'ORG_PARTNER') {
+            throw new Error(
+              'Your account is signed in, but does not have Admin access yet. Enter your Security Key below to activate Super Admin permissions.',
+            );
           }
         }
       }
@@ -122,7 +212,13 @@ export default function InternalAdminAccessPage() {
             </CardDescription>
           </CardHeader>
 
-          <CardContent className="space-y-4">
+          <CardContent>
+            <form
+              className="space-y-4"
+              onSubmit={(e) => {
+                void handleAdminAuth(e);
+              }}
+            >
             <div className="grid grid-cols-2 gap-1.5 rounded-xl bg-slate-100 p-1">
               <button
                 type="button"
@@ -211,14 +307,14 @@ export default function InternalAdminAccessPage() {
             </div>
 
             <Button
+              type="submit"
               className="w-full"
               disabled={
                 busy ||
                 !email.trim() ||
                 password.length < 6 ||
-                (mode === 'bootstrap' && (fullName.trim().length < 2 || adminSecret.trim().length < 16))
+                (mode === 'bootstrap' && (fullName.trim().length < 2 || adminSecret.trim().length < 32))
               }
-              onClick={() => void handleAdminAuth()}
             >
               <ShieldCheck className="mr-1.5 h-4 w-4" />
               {busy
@@ -227,6 +323,19 @@ export default function InternalAdminAccessPage() {
                   ? 'Activate Admin Account'
                   : 'Open Admin Console'}
             </Button>
+
+            {awaitingEmailConfirm && (
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                disabled={busy || !email.trim()}
+                onClick={() => void handleResendConfirmation()}
+              >
+                Resend Confirmation Email
+              </Button>
+            )}
+            </form>
           </CardContent>
         </Card>
       </div>

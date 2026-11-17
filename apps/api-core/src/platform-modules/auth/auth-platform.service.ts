@@ -295,6 +295,119 @@ export class AuthPlatformService {
     });
   }
 
+  async registerOperator(payload: {
+    fullName: string;
+    email: string;
+    password: string;
+    adminSecret: string;
+  }) {
+    const normalizedEmail = payload.email.trim().toLowerCase();
+    if (this.cache) {
+      const rl = await this.cache.checkRateLimit(
+        `sparktrack:rl:admin-register:${normalizedEmail}`,
+        5,
+        900,
+      );
+      if (!rl.allowed) {
+        throw new HttpException(
+          'Too many operator registration attempts. Try again in 15 minutes.',
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+      }
+    }
+
+    const configuredSecret = this.getAdminSecret();
+    const expectedBuf = Buffer.from(configuredSecret, 'utf8');
+    const suppliedBuf = Buffer.from(payload.adminSecret, 'utf8');
+    const isValid =
+      expectedBuf.length >= 32 &&
+      expectedBuf.length === suppliedBuf.length &&
+      timingSafeEqual(expectedBuf, suppliedBuf);
+
+    if (!isValid) {
+      throw new ForbiddenException('Invalid operator security key. Super Admin provisioning denied.');
+    }
+
+    const supabaseUrl = this.config.get<string>('NEXT_PUBLIC_SUPABASE_URL')?.trim()?.replace(/\/+$/, '');
+    const serviceRoleKey = this.config.get<string>('SUPABASE_SERVICE_ROLE_KEY')?.trim();
+    if (
+      !supabaseUrl ||
+      !serviceRoleKey ||
+      serviceRoleKey.includes('your-supabase-service-role-key')
+    ) {
+      throw new ServiceUnavailableException(
+        'Direct operator auto-confirmation is unavailable because SUPABASE_SERVICE_ROLE_KEY is not configured.',
+      );
+    }
+
+    const createRes = await fetch(`${supabaseUrl}/auth/v1/admin/users`, {
+      method: 'POST',
+      headers: {
+        apikey: serviceRoleKey,
+        Authorization: `Bearer ${serviceRoleKey}`,
+        'Content-Type': 'application/json',
+      },
+      signal: AbortSignal.timeout(10_000),
+      body: JSON.stringify({
+        email: normalizedEmail,
+        password: payload.password,
+        email_confirm: true,
+        user_metadata: { full_name: payload.fullName.trim(), role: 'SUPER_ADMIN' },
+      }),
+    });
+
+    let userId: string | null = null;
+    if (createRes.ok) {
+      const created = (await createRes.json()) as { id?: string };
+      userId = created.id ?? null;
+    } else {
+      // User may already exist in Supabase Auth (e.g., from an unconfirmed sign-up attempt).
+      const listRes = await fetch(
+        `${supabaseUrl}/auth/v1/admin/users?page=1&per_page=100`,
+        {
+          headers: {
+            apikey: serviceRoleKey,
+            Authorization: `Bearer ${serviceRoleKey}`,
+          },
+          signal: AbortSignal.timeout(10_000),
+        },
+      );
+      if (listRes.ok) {
+        const listData = (await listRes.json()) as { users?: Array<{ id: string; email?: string }> };
+        const existing = listData.users?.find(
+          (u) => u.email?.toLowerCase() === normalizedEmail,
+        );
+        if (existing) {
+          userId = existing.id;
+          await fetch(`${supabaseUrl}/auth/v1/admin/users/${existing.id}`, {
+            method: 'PUT',
+            headers: {
+              apikey: serviceRoleKey,
+              Authorization: `Bearer ${serviceRoleKey}`,
+              'Content-Type': 'application/json',
+            },
+            signal: AbortSignal.timeout(10_000),
+            body: JSON.stringify({
+              password: payload.password,
+              email_confirm: true,
+            }),
+          });
+        }
+      }
+    }
+
+    if (!userId) {
+      throw new ServiceUnavailableException(
+        'Could not provision operator account in Supabase Auth.',
+      );
+    }
+
+    return onboardingQueries.bootstrapSuperAdmin(this.db, userId, {
+      fullName: payload.fullName,
+      email: normalizedEmail,
+    });
+  }
+
   async issueInvitation(payload: {
     email: string;
     role: 'SCHOOL_ADMIN' | 'ORG_PARTNER' | 'MENTOR';

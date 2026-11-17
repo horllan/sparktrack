@@ -82,6 +82,13 @@ const BootstrapAdminSchema = z.object({
   adminSecret: z.string().min(32).max(256),
 });
 
+const RegisterOperatorSchema = z.object({
+  fullName: z.string().min(2).max(120),
+  email: z.string().email(),
+  password: z.string().min(6).max(128),
+  adminSecret: z.string().min(32).max(256),
+});
+
 const DataGovernanceScanSchema = z.object({
   sampleText: z.string().min(3).max(4000),
 });
@@ -209,6 +216,16 @@ class AuthController {
   @ApiOperation({ summary: 'Internal operator endpoint: provision a SUPER_ADMIN account using ADMIN_REGISTRATION_SECRET' })
   bootstrapAdmin(@CurrentUser() user: AuthUser, @Body() body: unknown) {
     return this.auth.bootstrapSuperAdmin(user, BootstrapAdminSchema.parse(body));
+  }
+
+  @Public()
+  @Post('admin/register-operator')
+  @ApiOperation({
+    summary:
+      'Create and auto-confirm a SUPER_ADMIN operator account via Supabase Admin API + ADMIN_REGISTRATION_SECRET',
+  })
+  registerOperator(@Body() body: unknown) {
+    return this.auth.registerOperator(RegisterOperatorSchema.parse(body));
   }
 
   @Post('onboarding')
