@@ -137,6 +137,8 @@ export default function StudentDashboardPage() {
   const [externalUrl, setExternalUrl] = useState('');
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
+  const [coachingTip, setCoachingTip] = useState('');
+  const [suggestingSkills, setSuggestingSkills] = useState(false);
   const [busy, setBusy] = useState(false);
   const [whatsappOptIn, setWhatsappOptIn] = useState(false);
   const [whatsappPhone, setWhatsappPhone] = useState('');
@@ -240,6 +242,59 @@ export default function StudentDashboardPage() {
   const toggleSkill = (code: string) =>
     setSelectedSkills((prev) => (prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]));
 
+  async function suggestSkillsWithAi() {
+    if (!title.trim() && !description.trim()) {
+      setError('Write a project title or short description first so we can suggest matching skills.');
+      return;
+    }
+    setSuggestingSkills(true);
+    setError('');
+    try {
+      const { data } = await createClient().auth.getSession();
+      const token = data.session?.access_token;
+      if (token) {
+        const res = await fetch(`${API_URL}/v1/reports/suggest-skills`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            title: title.trim() || 'Student Project',
+            description: description.trim(),
+            artifactType,
+          }),
+        });
+        if (res.ok) {
+          const body = (await res.json()) as {
+            suggestedSkillCodes?: string[];
+            coachingTip?: string;
+          };
+          const suggested = body.suggestedSkillCodes ?? [];
+          if (suggested.length > 0) {
+            setSelectedSkills((prev) => Array.from(new Set([...prev, ...suggested])));
+          }
+          if (body.coachingTip) {
+            setCoachingTip(body.coachingTip);
+          }
+          return;
+        }
+      }
+      // Local offline fallback when not signed in
+      const hay = `${title} ${description}`.toLowerCase();
+      const matched = catalogue
+        .filter((s) =>
+          `${s.name} ${s.description}`.toLowerCase().split(/\W+/).some((w) => w.length >= 4 && hay.includes(w)),
+        )
+        .slice(0, 3)
+        .map((s) => s.code);
+      const fallback = matched.length > 0 ? matched : catalogue.slice(0, 2).map((s) => s.code);
+      setSelectedSkills((prev) => Array.from(new Set([...prev, ...fallback])));
+      setCoachingTip('Describe what you built, what challenge you solved, and how you tested your work.');
+    } catch {
+      setError('Could not suggest skills right now.');
+    } finally {
+      setSuggestingSkills(false);
+    }
+  }
+
   async function submitEvidence() {
     if (!userId || !title.trim() || selectedSkills.length === 0) {
       setError('Enter a project title and select at least one skill you used.');
@@ -268,28 +323,33 @@ export default function StudentDashboardPage() {
           });
           if (presignRes.ok) {
             const ticket = (await presignRes.json()) as {
+              mode?: 'LIVE' | 'SANDBOX_SIMULATION';
               r2Key: string;
               uploadUrl: string;
               contentType: string;
             };
-            let uploadRes: Response;
-            try {
-              uploadRes = await fetch(ticket.uploadUrl, {
-                method: 'PUT',
-                headers: {
-                  'Content-Type': ticket.contentType,
-                },
-                body: attachmentFile,
-              });
-            } catch {
-              throw new Error(
-                'Could not upload your attachment right now. Please check your connection and try again.',
-              );
+            if (ticket.mode === 'SANDBOX_SIMULATION' || ticket.uploadUrl.startsWith('sandbox://')) {
+              storageR2Keys.push(ticket.r2Key);
+            } else {
+              let uploadRes: Response;
+              try {
+                uploadRes = await fetch(ticket.uploadUrl, {
+                  method: 'PUT',
+                  headers: {
+                    'Content-Type': ticket.contentType,
+                  },
+                  body: attachmentFile,
+                });
+              } catch {
+                throw new Error(
+                  'Could not upload your attachment right now. Please check your connection and try again.',
+                );
+              }
+              if (!uploadRes.ok) {
+                throw new Error('Could not upload your file. Please try again.');
+              }
+              storageR2Keys.push(ticket.r2Key);
             }
-            if (!uploadRes.ok) {
-              throw new Error('Could not upload your file. Please try again.');
-            }
-            storageR2Keys.push(ticket.r2Key);
           } else {
             throw new Error(
               'Could not prepare the file upload. Please try again in a moment.',
@@ -705,9 +765,26 @@ export default function StudentDashboardPage() {
               </label>
 
               <div>
-                <p className="mb-2 text-xs font-semibold text-slate-700">
-                  What skills did you use? <span className="text-slate-400">({selectedSkills.length} selected)</span>
-                </p>
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs font-semibold text-slate-700">
+                    What skills did you use? <span className="text-slate-400">({selectedSkills.length} selected)</span>
+                  </p>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={suggestingSkills || (!title.trim() && !description.trim())}
+                    onClick={() => void suggestSkillsWithAi()}
+                  >
+                    <Sparkles size={14} className="mr-1.5" aria-hidden="true" />
+                    {suggestingSkills ? 'Suggesting…' : 'Auto-Suggest Skills'}
+                  </Button>
+                </div>
+                {coachingTip && (
+                  <p className="mb-2.5 rounded-xl border border-spark-200 bg-spark-50/70 px-3 py-2 text-xs leading-relaxed text-spark-900">
+                    <strong>Tip:</strong> {coachingTip}
+                  </p>
+                )}
                 <div className="grid max-h-52 grid-cols-1 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
                   {catalogue.map((skill) => {
                     const active = selectedSkills.includes(skill.code);

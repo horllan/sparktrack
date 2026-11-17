@@ -217,6 +217,12 @@ export default function AdminDashboardPage() {
     paymentProvider: 'PAYSTACK' | 'STRIPE';
     paymentAmount: number;
     checkoutMode: string;
+    authorizationUrl?: string | null;
+  } | null>(null);
+  const [providerStatus, setProviderStatus] = useState<{
+    stage: string;
+    paystackKeyMode?: string;
+    providers: Record<string, string>;
   } | null>(null);
 
   const [assignMentorId, setAssignMentorId] = useState('');
@@ -288,9 +294,21 @@ export default function AdminDashboardPage() {
 
   const loadHealth = useCallback(async () => {
     try {
-      const res = await fetch(`${API_URL}/health`);
+      const [res, provRes] = await Promise.all([
+        fetch(`${API_URL}/health`),
+        fetch(`${API_URL}/v1/billing/providers/status`),
+      ]);
       if (res.ok) {
         setHealth((await res.json()) as HealthTelemetry);
+      }
+      if (provRes.ok) {
+        setProviderStatus(
+          (await provRes.json()) as {
+            stage: string;
+            paystackKeyMode?: string;
+            providers: Record<string, string>;
+          },
+        );
       }
     } catch {
       // Non-fatal
@@ -573,6 +591,7 @@ export default function AdminDashboardPage() {
         paymentReference?: string;
         paymentAmount?: number;
         checkoutMode?: string;
+        authorizationUrl?: string | null;
         message?: string;
       };
       if (!res.ok) throw new Error(body.message ?? 'Failed to enrol learner.');
@@ -583,6 +602,7 @@ export default function AdminDashboardPage() {
           paymentProvider,
           paymentAmount: body.paymentAmount ?? 0,
           checkoutMode: body.checkoutMode ?? 'SANDBOX_SIMULATION',
+          authorizationUrl: body.authorizationUrl ?? null,
         });
       }
       setNotice(
@@ -591,6 +611,45 @@ export default function AdminDashboardPage() {
       await loadCohorts();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not enrol learner.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function verifyPaymentWithProvider() {
+    if (!pendingCheckout) return;
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      const token = await getToken();
+      if (!token) throw new Error('Sign in first to verify payment.');
+      const res = await fetch(
+        `${API_URL}/v1/billing/verify/${encodeURIComponent(pendingCheckout.paymentReference)}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      );
+      const body = (await res.json()) as {
+        verified?: boolean;
+        source?: string;
+        enrolment?: { enrolmentStatus?: string };
+        message?: string;
+      };
+      if (!res.ok) throw new Error(body.message ?? 'Could not verify payment.');
+      if (body.verified) {
+        setNotice(
+          `Payment verified (${body.source ?? 'LIVE'})! Enrolment is now ${body.enrolment?.enrolmentStatus ?? 'ACTIVE'}.`,
+        );
+        setPendingCheckout(null);
+        await loadCohorts();
+      } else {
+        setNotice(
+          'Payment is still awaiting confirmation from the provider. Complete checkout or use Sandbox Webhook Simulation below.',
+        );
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not verify payment.');
     } finally {
       setBusy(false);
     }
@@ -924,7 +983,7 @@ export default function AdminDashboardPage() {
                   Enrol Learner (Create Pending Checkout)
                 </Button>
                 {pendingCheckout && (
-                  <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-3.5 text-xs text-amber-950 space-y-2">
+                  <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-3.5 text-xs text-amber-950 space-y-2.5">
                     <p className="font-bold">
                       Pending {pendingCheckout.paymentProvider} Checkout ({pendingCheckout.checkoutMode})
                     </p>
@@ -936,14 +995,34 @@ export default function AdminDashboardPage() {
                           : `USD ${pendingCheckout.paymentAmount.toLocaleString()}`}
                       </strong>
                     </p>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      disabled={busy}
-                      onClick={() => void simulateWebhookConfirmation()}
-                    >
-                      Simulate {pendingCheckout.paymentProvider} Webhook Confirmation (Activate Seat)
-                    </Button>
+                    <div className="flex flex-wrap gap-2">
+                      {pendingCheckout.authorizationUrl && (
+                        <a
+                          href={pendingCheckout.authorizationUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex h-8 items-center rounded-lg bg-emerald-700 px-3 text-xs font-bold text-white shadow-2xs transition hover:bg-emerald-800"
+                        >
+                          Open {pendingCheckout.paymentProvider} Checkout Page ↗
+                        </a>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={busy}
+                        onClick={() => void verifyPaymentWithProvider()}
+                      >
+                        Verify Payment Status
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        disabled={busy}
+                        onClick={() => void simulateWebhookConfirmation()}
+                      >
+                        Simulate Webhook Confirmation
+                      </Button>
+                    </div>
                   </div>
                 )}
               </CardContent>
@@ -1328,6 +1407,46 @@ export default function AdminDashboardPage() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* THIRD-PARTY PROVIDER INTEGRATION STATUS */}
+            {providerStatus && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Third-Party Provider Modes</CardTitle>
+                  <CardDescription>
+                    Shows which external services are running with live keys vs. automatic sandbox mode.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                  {[
+                    {
+                      label: 'Paystack Payments',
+                      mode: providerStatus.paystackKeyMode ?? providerStatus.providers.PAYSTACK,
+                    },
+                    { label: 'Stripe Checkout', mode: providerStatus.providers.STRIPE },
+                    { label: 'Termii SMS OTP', mode: providerStatus.providers.TERMII_SMS },
+                    { label: 'Cloudflare R2 Storage', mode: providerStatus.providers.CLOUDFLARE_R2 },
+                    { label: 'Gemini AI Advisor', mode: providerStatus.providers.GEMINI_AI },
+                  ].map((item) => (
+                    <div
+                      key={item.label}
+                      className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-3.5 text-xs"
+                    >
+                      <p className="font-semibold text-slate-600">{item.label}</p>
+                      <div className="mt-1.5">
+                        <Badge
+                          variant={
+                            item.mode?.startsWith('LIVE') ? 'success' : 'outline'
+                          }
+                        >
+                          {item.mode?.replace(/_/g, ' ') ?? 'SANDBOX'}
+                        </Badge>
+                      </div>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            )}
 
             {/* ENTERPRISE PARTNER API KEYS */}
             <Card>

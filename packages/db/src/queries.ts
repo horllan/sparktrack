@@ -1766,6 +1766,69 @@ export const billingQueries = {
       };
     });
   },
+
+  async findEnrolmentByReference(db: Db, paymentReference: string) {
+    const r = await sql<{
+      id: string;
+      learner_id: string;
+      cohort_id: string;
+      cohort_title: string;
+      enrolment_status: string;
+      payment_provider: string;
+      payment_reference: string;
+      payment_amount: number | null;
+      payment_currency: string | null;
+      enrolled_at: Date;
+    }>`
+      SELECT
+        e.id,
+        e.learner_id,
+        e.cohort_id,
+        c.title AS cohort_title,
+        e.enrolment_status::text,
+        e.payment_provider::text,
+        e.payment_reference,
+        e.payment_amount,
+        e.payment_currency,
+        e.enrolled_at
+      FROM core.cohort_enrolments e
+      JOIN core.programme_cohorts c ON c.id = e.cohort_id
+      WHERE e.payment_reference = ${paymentReference}
+      LIMIT 1
+    `.execute(db);
+    const row = r.rows[0];
+    if (!row) return null;
+    return {
+      enrolmentId: row.id,
+      learnerId: row.learner_id,
+      cohortId: row.cohort_id,
+      cohortTitle: row.cohort_title,
+      enrolmentStatus: row.enrolment_status,
+      paymentProvider: row.payment_provider as 'PAYSTACK' | 'STRIPE' | 'INSTITUTIONAL_INVOICE',
+      paymentReference: row.payment_reference,
+      paymentAmount: row.payment_amount,
+      paymentCurrency: row.payment_currency ?? 'NGN',
+      enrolledAt: row.enrolled_at.toISOString(),
+    };
+  },
+
+  async enrolierContact(db: Db, userId: string, learnerId: string) {
+    const r = await sql<{
+      user_email: string | null;
+      guardian_email: string | null;
+    }>`
+      SELECT
+        (SELECT email FROM core.users WHERE id = ${userId}::uuid) AS user_email,
+        (
+          SELECT g.email
+          FROM core.learner_profiles lp
+          JOIN core.users g ON g.id = lp.primary_guardian_id
+          WHERE lp.learner_id = ${learnerId}::uuid
+        ) AS guardian_email
+    `.execute(db);
+    const row = r.rows[0];
+    return row?.user_email ?? row?.guardian_email ?? 'payments@sparktrack.africa';
+  },
 };
 
 export const institutionQueries = {

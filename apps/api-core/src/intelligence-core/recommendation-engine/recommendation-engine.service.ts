@@ -2,7 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import type { Kysely } from 'kysely';
-import { evidenceReadQueries, reportQueries } from '@sparktrack/db';
+import { evidenceReadQueries, learningQueries, reportQueries } from '@sparktrack/db';
 import type { SparkTrackDatabase } from '@sparktrack/db';
 import type { PathwayAffinity, ReportSection } from '@sparktrack/contracts';
 import { KYSELY } from '../../common/database/database.module';
@@ -87,6 +87,78 @@ export class RecommendationEngineService {
   }
 
   latest(learnerId: string) { return reportQueries.latest(this.db, learnerId); }
+
+  async suggestSkillsFromDraft(p: { title: string; description?: string; artifactType?: string }) {
+    const catalogue = await learningQueries.skillCatalogue(this.db);
+    const validCodes = new Set(catalogue.map((s) => s.code));
+    const apiKey =
+      this.config.get<string>('GOOGLE_GENERATIVE_AI_API_KEY') ??
+      this.config.get<string>('GOOGLE_API_KEY');
+    const modelName = this.config.get<string>('GEMINI_FAST_PARSER_MODEL') ?? 'gemini-2.5-flash';
+
+    if (apiKey && !apiKey.includes('your-') && apiKey.trim().length >= 16) {
+      try {
+        const genAI = new GoogleGenerativeAI(apiKey.trim());
+        const model = genAI.getGenerativeModel({
+          model: modelName,
+          systemInstruction:
+            'You are an educational project skill-tagger. Given a learner project title, description, and skill catalogue, return JSON {"suggestedSkillCodes": string[], "coachingTip": string} with 1 to 4 matching skill codes from the catalogue and one brief, encouraging sentence on how to describe the project clearly. Never predict careers.',
+          generationConfig: { responseMimeType: 'application/json', temperature: 0.2 },
+        });
+        const prompt = JSON.stringify({
+          title: p.title,
+          description: p.description ?? '',
+          artifactType: p.artifactType ?? 'PROJECT_SUBMISSION',
+          availableSkills: catalogue.map((s) => ({ code: s.code, name: s.name, description: s.description })),
+        });
+        const res = await model.generateContent(
+          { contents: [{ role: 'user', parts: [{ text: prompt }] }] },
+          { timeout: 8000 },
+        );
+        const parsed = JSON.parse(res.response.text()) as {
+          suggestedSkillCodes?: string[];
+          coachingTip?: string;
+        };
+        const matched = (parsed.suggestedSkillCodes ?? []).filter((c) => validCodes.has(c)).slice(0, 4);
+        if (matched.length > 0) {
+          return {
+            mode: 'GEMINI_AI' as const,
+            suggestedSkillCodes: matched,
+            coachingTip:
+              parsed.coachingTip?.trim() ||
+              'Mention what problem you solved, the tools you used, and what you tested.',
+          };
+        }
+      } catch (e) {
+        this.logger.warn(`Gemini skill tagger fallback triggered: ${e instanceof Error ? e.message : e}`);
+      }
+    }
+
+    const hay = `${p.title} ${p.description ?? ''}`.toLowerCase();
+    const scored = catalogue
+      .map((skill) => {
+        const words = `${skill.name} ${skill.description} ${skill.code.replace(/^SKILL_/, '').replace(/_/g, ' ')}`
+          .toLowerCase()
+          .split(/[^a-z0-9]+/)
+          .filter((w) => w.length >= 3);
+        const hits = words.filter((w) => hay.includes(w)).length;
+        return { code: skill.code, hits };
+      })
+      .filter((s) => s.hits > 0)
+      .sort((a, b) => b.hits - a.hits)
+      .slice(0, 3)
+      .map((s) => s.code);
+
+    const fallbackCodes =
+      scored.length > 0 ? scored : catalogue.slice(0, 2).map((s) => s.code);
+
+    return {
+      mode: 'DETERMINISTIC_CATALOGUE' as const,
+      suggestedSkillCodes: fallbackCodes,
+      coachingTip:
+        'Describe what you built, what challenge you ran into, and how you tested that your solution worked.',
+    };
+  }
 
   /** Data minimisation: omit names, DOB, and school; send learner-declared context and evidence aggregates. */
   private buildFacts(ctx: {

@@ -3,7 +3,8 @@ import { BadRequestException, Inject, Injectable, ServiceUnavailableException } 
 import { ConfigService } from '@nestjs/config';
 
 export interface PresignedR2Ticket {
-  provider: 'CLOUDFLARE_R2_S3_V4';
+  provider: 'CLOUDFLARE_R2_S3_V4' | 'SANDBOX_SIMULATION';
+  mode: 'LIVE' | 'SANDBOX_SIMULATION';
   bucketName: string;
   r2Key: string;
   uploadUrl: string;
@@ -26,10 +27,6 @@ export class CloudflareR2Service {
     contentType: string;
     expiresInSeconds?: number;
   }): PresignedR2Ticket {
-    const credentials = this.getCredentials();
-    if (!credentials) {
-      throw new ServiceUnavailableException('Cloudflare R2 is not configured for evidence uploads.');
-    }
     if (/[\r\n]/.test(p.contentType)) {
       throw new BadRequestException('Invalid content type for evidence upload.');
     }
@@ -41,6 +38,28 @@ export class CloudflareR2Service {
     const contentType = p.contentType.trim();
     const now = new Date();
     const expiresAt = new Date(now.getTime() + expiresSeconds * 1000).toISOString();
+
+    const credentials = this.getCredentials();
+    if (!credentials) {
+      const stage = (
+        this.config.get<string>('SPARKTRACK_STAGE') ??
+        this.config.get<string>('NODE_ENV') ??
+        'development'
+      ).toLowerCase();
+      if (stage === 'production') {
+        throw new ServiceUnavailableException('Cloudflare R2 is not configured for evidence uploads.');
+      }
+      return {
+        provider: 'SANDBOX_SIMULATION',
+        mode: 'SANDBOX_SIMULATION',
+        bucketName,
+        r2Key,
+        uploadUrl: `sandbox://r2-local/${bucketName}/${r2Key}`,
+        downloadUrl: `sandbox://r2-local/${bucketName}/${r2Key}`,
+        expiresAt,
+        contentType,
+      };
+    }
 
     const host = `${credentials.accountId}.r2.cloudflarestorage.com`;
     const uploadUrl = this.signS3V4Url({
@@ -67,6 +86,7 @@ export class CloudflareR2Service {
 
     return {
       provider: 'CLOUDFLARE_R2_S3_V4',
+      mode: 'LIVE',
       bucketName,
       r2Key,
       uploadUrl,
