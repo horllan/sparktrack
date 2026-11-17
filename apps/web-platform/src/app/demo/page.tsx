@@ -34,6 +34,12 @@ import {
 } from '../../lib/demo-case-studies';
 import { createClient } from '../../lib/supabase/client';
 import { PortfolioQrBadge } from '../../components/portfolio-qr-badge';
+import {
+  AnimatedTelemetryBars,
+  CapabilityRadarChart,
+  GrowthTrajectoryAreaChart,
+  SignalDonutChart,
+} from '../../components/charts/capability-charts';
 
 type DemoPersona = 'student' | 'parent' | 'mentor' | 'school' | 'verifier';
 
@@ -755,6 +761,62 @@ function InteractiveDemoCenterContent() {
               </Card>
             </div>
 
+            {/* Interactive Charts Strip (Matches Production Student View) */}
+            <div className="grid gap-6 lg:grid-cols-3">
+              <Card className="lg:col-span-2">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base">Your Skill Shape</CardTitle>
+                  <CardDescription>
+                    Interactive view of {selectedCaseStudy.fullName.split(' ')[0]}’s strongest skills across {onboardingYear}–2026.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <CapabilityRadarChart
+                    items={demoState.skillScores.map((s) => ({
+                      label: s.name,
+                      value: Math.round(s.score * 100),
+                      meta: s.progression,
+                      detail: `${s.evidenceCount} ${s.evidenceCount === 1 ? 'project' : 'projects'}`,
+                    }))}
+                  />
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base">Project Mix &amp; Momentum</CardTitle>
+                  <CardDescription>
+                    Mentor verification status and growth across {onboardingYear}–2026.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-5">
+                  <SignalDonutChart
+                    centerLabel={String(demoState.activeProjects.length)}
+                    centerSublabel="Confirmed Projects"
+                    segments={[
+                      {
+                        label: 'Mentor Verified',
+                        value: demoState.activeProjects.filter((a) => a.mentorVerified).length,
+                        color: '#059669',
+                      },
+                      {
+                        label: 'Awaiting Review',
+                        value: demoState.activeProjects.filter((a) => !a.mentorVerified).length,
+                        color: '#2563eb',
+                      },
+                    ]}
+                  />
+                  <GrowthTrajectoryAreaChart
+                    points={demoState.timeline.map((pt) => ({
+                      label: String(pt.year),
+                      value: pt.compositeMasteryPct,
+                      detail: `${pt.projectsVerified} verified projects`,
+                    }))}
+                  />
+                </CardContent>
+              </Card>
+            </div>
+
             {/* Year-by-Year Growth Timeline */}
             <Card>
               <CardHeader>
@@ -981,6 +1043,41 @@ function InteractiveDemoCenterContent() {
                 </Button>
               </CardContent>
             </Card>
+
+            <Card className="lg:col-span-2">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Live Observation Signal Preview</CardTitle>
+                <CardDescription>
+                  Updates dynamically as you adjust the work-habit ratings above—identical to the live Mentor Studio.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-6 lg:grid-cols-2">
+                <CapabilityRadarChart
+                  items={MENTOR_SIGNALS.map((sig) => ({
+                    label: sig.label,
+                    value: ((mentorSignals[sig.key] ?? 0) / 4) * 100,
+                    meta: mentorSignals[sig.key] ? `${mentorSignals[sig.key]}/4 rating` : 'Not selected',
+                    detail: 'Behavioural growth indicator',
+                  }))}
+                />
+                <SignalDonutChart
+                  centerLabel={String(demoState.activeProjects.length)}
+                  centerSublabel="Student Projects"
+                  segments={[
+                    {
+                      label: 'Verified by Mentor',
+                      value: demoState.activeProjects.filter((p) => p.mentorVerified).length,
+                      color: '#059669',
+                    },
+                    {
+                      label: 'Awaiting Review',
+                      value: demoState.activeProjects.filter((p) => !p.mentorVerified).length,
+                      color: '#2563eb',
+                    },
+                  ]}
+                />
+              </CardContent>
+            </Card>
           </div>
         )}
 
@@ -1108,7 +1205,74 @@ function InteractiveDemoCenterContent() {
                   ))}
                 </div>
               </CardHeader>
-              <CardContent className="grid gap-4 md:grid-cols-2">
+              <CardContent className="space-y-6">
+                <div className="grid gap-5 lg:grid-cols-3">
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4 lg:col-span-2">
+                    <p className="mb-1 text-sm font-bold text-slate-900">Observed Skill Shape</p>
+                    <p className="mb-3 text-xs text-slate-500">
+                      Interactive view of the skills demonstrated across verified projects.
+                    </p>
+                    <CapabilityRadarChart
+                      items={demoState.skillScores.map((s) => ({
+                        label: s.name,
+                        value: Math.round(s.score * 100),
+                        meta: s.progression,
+                        detail: `${s.evidenceCount} ${s.evidenceCount === 1 ? 'project' : 'projects'}`,
+                      }))}
+                    />
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <p className="mb-1 text-sm font-bold text-slate-900">Skill Maturity Mix</p>
+                    <p className="mb-3 text-xs text-slate-500">
+                      How skills are distributed across learning stages.
+                    </p>
+                    <SignalDonutChart
+                      centerLabel={String(demoState.skillScores.length)}
+                      centerSublabel="Active Skills"
+                      segments={[
+                        {
+                          label: 'Advanced',
+                          value: demoState.skillScores.filter((s) => s.progression === 'ADVANCED').length,
+                          color: '#059669',
+                        },
+                        {
+                          label: 'Competent',
+                          value: demoState.skillScores.filter((s) => s.progression === 'COMPETENT').length,
+                          color: '#2563eb',
+                        },
+                        {
+                          label: 'Developing',
+                          value: demoState.skillScores.filter((s) => s.progression === 'DEVELOPING').length,
+                          color: '#0891b2',
+                        },
+                        {
+                          label: 'Beginner',
+                          value: demoState.skillScores.filter((s) => s.progression === 'BEGINNER').length,
+                          color: '#d97706',
+                        },
+                      ]}
+                    />
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <p className="mb-1 text-sm font-bold text-slate-900">
+                    Career &amp; Entrepreneurship Pathways Worth Exploring
+                  </p>
+                  <p className="mb-3 text-xs text-slate-500">
+                    Match strength based on current project evidence—options to try, not fixed predictions.
+                  </p>
+                  <AnimatedTelemetryBars
+                    items={selectedCaseStudy.pathways.map((p) => ({
+                      label: p.pathwayName,
+                      value: Math.round(p.affinityScore * 100),
+                      badge: p.isDivergentFromDeclared ? 'New strength' : p.pathwayType.replace(/_/g, ' '),
+                      subtitle: p.rationale,
+                    }))}
+                  />
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
                 {visibleReportKeys.map((key) => {
                   const sec = demoState.report[key];
                   const idx = REPORT_SECTION_KEYS.indexOf(key);
@@ -1136,6 +1300,7 @@ function InteractiveDemoCenterContent() {
                     </div>
                   );
                 })}
+                </div>
               </CardContent>
             </Card>
           </div>
@@ -1174,6 +1339,46 @@ function InteractiveDemoCenterContent() {
                     <Badge variant="success">100% Verified</Badge>
                   </CardTitle>
                 </CardHeader>
+              </Card>
+            </div>
+
+            <div className="grid gap-6 lg:grid-cols-2">
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base">Institution Skill Profile ({selectedCaseStudy.organisationName})</CardTitle>
+                  <CardDescription>
+                    Aggregated capability shape across the selected learner cohort.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <CapabilityRadarChart
+                    items={demoState.skillScores.map((s) => ({
+                      label: s.name,
+                      value: Math.round(s.score * 100),
+                      meta: s.progression,
+                      detail: `${s.evidenceCount} projects`,
+                    }))}
+                  />
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base">Learner Track Distribution</CardTitle>
+                  <CardDescription>
+                    Breakdown across secondary, university, vocational, and independent tracks.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <SignalDonutChart
+                    centerLabel={String(DEMO_CASE_STUDIES.length)}
+                    centerSublabel="Tracks Active"
+                    segments={DEMO_CASE_STUDIES.map((cs, i) => ({
+                      label: cs.educationStage,
+                      value: cs.projects.length,
+                      color: ['#2563eb', '#059669', '#0891b2', '#7c3aed'][i % 4],
+                    }))}
+                  />
+                </CardContent>
               </Card>
             </div>
 
@@ -1315,6 +1520,35 @@ function InteractiveDemoCenterContent() {
                     label="Verified Share Link & QR Seal"
                     subtitle="Included on printed and PDF capability portfolios for instant verification"
                   />
+                  <div className="grid gap-5 lg:grid-cols-3">
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4 lg:col-span-2">
+                      <p className="mb-1 text-sm font-bold text-slate-900">Verified Capability Profile</p>
+                      <p className="mb-3 text-xs text-slate-500">
+                        Hover or tap any axis to inspect verified mastery and supporting project counts.
+                      </p>
+                      <CapabilityRadarChart
+                        items={demoState.skillScores.map((s) => ({
+                          label: s.name,
+                          value: Math.round(s.score * 100),
+                          meta: s.progression,
+                          detail: `${s.evidenceCount} ${s.evidenceCount === 1 ? 'project' : 'projects'}`,
+                        }))}
+                      />
+                    </div>
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                      <p className="mb-1 text-sm font-bold text-slate-900">Verification &amp; Growth</p>
+                      <p className="mb-3 text-xs text-slate-500">
+                        Longitudinal progression across {onboardingYear}–2026.
+                      </p>
+                      <GrowthTrajectoryAreaChart
+                        points={demoState.timeline.map((pt) => ({
+                          label: String(pt.year),
+                          value: pt.compositeMasteryPct,
+                          detail: `${pt.projectsVerified} verified projects`,
+                        }))}
+                      />
+                    </div>
+                  </div>
                   <div>
                     <h3 className="mb-3 text-xs font-extrabold uppercase tracking-wider text-slate-600">
                       Completed Trainings &amp; Certificates ({demoState.activeTrainings.length})
