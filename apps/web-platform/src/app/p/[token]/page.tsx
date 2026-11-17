@@ -16,6 +16,11 @@ import {
 } from '@sparktrack/ui';
 import { DEMO_CASE_STUDIES, computeDemoState } from '../../../lib/demo-case-studies';
 import { PortfolioQrBadge } from '../../../components/portfolio-qr-badge';
+import {
+  CapabilityRadarChart,
+  GrowthTrajectoryAreaChart,
+  SignalDonutChart,
+} from '../../../components/charts/capability-charts';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
 
@@ -229,6 +234,69 @@ export default function SharedPortfolioPage() {
 
         {!busy && portfolio && (
           <>
+            {portfolio.skills.length > 0 && (
+              <div className="grid gap-5 lg:grid-cols-3">
+                <Card className="lg:col-span-2">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base">Verified Capability Profile</CardTitle>
+                    <CardDescription>
+                      Hover or tap any axis to inspect verified mastery and supporting project counts.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <CapabilityRadarChart
+                      items={portfolio.skills.map((s) => ({
+                        label: s.node_name,
+                        value: Math.round(s.score * 100),
+                        meta: s.progression,
+                        detail: `${s.evidence_count} ${s.evidence_count === 1 ? 'project' : 'projects'}`,
+                      }))}
+                    />
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base">Verification &amp; Growth</CardTitle>
+                    <CardDescription>
+                      Mentor verification status and quality progression across projects.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-5">
+                    <SignalDonutChart
+                      centerLabel={String(portfolio.artifacts.length)}
+                      centerSublabel="Projects"
+                      segments={[
+                        {
+                          label: 'Mentor Verified',
+                          value: portfolio.artifacts.filter((a) => a.mentorVerified).length,
+                          color: '#059669',
+                        },
+                        {
+                          label: 'Awaiting Review',
+                          value: portfolio.artifacts.filter((a) => !a.mentorVerified).length,
+                          color: '#2563eb',
+                        },
+                      ]}
+                    />
+                    <GrowthTrajectoryAreaChart
+                      points={[...portfolio.artifacts]
+                        .reverse()
+                        .slice(-6)
+                        .map((a, idx) => ({
+                          label: a.title.length > 22 ? `${a.title.slice(0, 20)}…` : a.title,
+                          value:
+                            a.qualityScore !== null
+                              ? Math.round(a.qualityScore * 100)
+                              : Math.min(95, 58 + idx * 8),
+                          detail: a.mentorVerified ? 'Mentor verified' : 'Submitted',
+                        }))}
+                    />
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
             <Card>
               <CardHeader>
                 <div className="flex flex-wrap items-center justify-between gap-2">

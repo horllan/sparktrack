@@ -23,6 +23,11 @@ import {
   UsersRound,
 } from '@sparktrack/ui';
 import { createClient } from '../../../../lib/supabase/client';
+import {
+  AnimatedTelemetryBars,
+  CapabilityRadarChart,
+  SignalDonutChart,
+} from '../../../../components/charts/capability-charts';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
 
@@ -685,52 +690,81 @@ export default function SchoolDashboardPage() {
               </Card>
             </div>
 
+            {/* Interactive Visual Telemetry Strip */}
+            <div className="grid gap-6 lg:grid-cols-3">
+              <Card className="lg:col-span-2">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base">Institution Skill Profile</CardTitle>
+                  <CardDescription>
+                    Shape of verified student capabilities across your school or training cohorts.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <CapabilityRadarChart
+                    items={data.skillDistribution.map((s) => ({
+                      label: s.name,
+                      value: Math.round(s.averageScore * 100),
+                      meta: s.category ?? 'Skill',
+                      detail: `${s.learnerCount} ${s.learnerCount === 1 ? 'learner' : 'learners'}`,
+                    }))}
+                    emptyText="Skill profile will appear once learners submit and verify projects."
+                  />
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base">Consent &amp; Sharing Readiness</CardTitle>
+                  <CardDescription>
+                    Guardian approval status across onboarded learners.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <SignalDonutChart
+                    centerLabel={String(data.totals.totalLearners)}
+                    centerSublabel="Total Learners"
+                    segments={[
+                      {
+                        label: 'Consent Active',
+                        value: data.totals.verifiedConsentLearners,
+                        color: '#059669',
+                      },
+                      {
+                        label: 'Pending / Restricted',
+                        value: Math.max(0, data.totals.totalLearners - data.totals.verifiedConsentLearners),
+                        color: '#d97706',
+                      },
+                      {
+                        label: 'Partner Discovery Opt-In',
+                        value: data.optedInLearnerCount,
+                        color: '#2563eb',
+                      },
+                    ]}
+                  />
+                </CardContent>
+              </Card>
+            </div>
+
             {/* Aggregate cohort metrics */}
             <div className="grid gap-6 lg:grid-cols-2">
               <Card>
                 <CardHeader>
                   <CardTitle className="text-base">Cohort Capability &amp; Skill Progression</CardTitle>
                   <CardDescription>
-                    Active skill momentum across verified learners and mentor-reviewed evidence.
+                    Active skill momentum across verified learners and mentor-reviewed evidence (vertical line shows 70% proficiency benchmark).
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-3.5">
-                  {data.skillDistribution.length === 0 ? (
-                    <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-6 text-center text-sm text-slate-500">
-                      No active skill states recorded yet.
-                    </div>
-                  ) : (
-                    data.skillDistribution.map((skill) => {
-                      const pct = Math.min(100, Math.round(skill.averageScore * 100));
-                      return (
-                        <div
-                          key={skill.code}
-                          className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-3.5 transition hover:bg-white"
-                        >
-                          <div className="flex items-center justify-between gap-2 text-sm">
-                            <div>
-                              <span className="font-semibold text-slate-900">{skill.name}</span>
-                              {skill.category && (
-                                <span className="ml-2 text-xs font-medium text-slate-400">• {skill.category}</span>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs text-slate-500">
-                                {skill.learnerCount} {skill.learnerCount === 1 ? 'learner' : 'learners'}
-                              </span>
-                              <Badge variant="outline">{pct}% avg</Badge>
-                            </div>
-                          </div>
-                          <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-slate-200/70">
-                            <div
-                              className="h-full rounded-full bg-gradient-to-r from-spark-600 to-cyan-400 transition-all duration-500"
-                              style={{ width: `${pct}%` }}
-                            />
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
+                <CardContent>
+                  <AnimatedTelemetryBars
+                    items={data.skillDistribution.map((skill) => ({
+                      label: skill.name,
+                      value: Math.round(skill.averageScore * 100),
+                      badge: `${skill.learnerCount} ${skill.learnerCount === 1 ? 'learner' : 'learners'}`,
+                      subtitle: skill.category ? `Domain: ${skill.category}` : undefined,
+                      benchmark: 70,
+                    }))}
+                    emptyText="No active skill states recorded yet."
+                  />
                 </CardContent>
               </Card>
 

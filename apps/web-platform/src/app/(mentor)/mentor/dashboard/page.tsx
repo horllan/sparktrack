@@ -20,6 +20,10 @@ import {
   UsersRound,
 } from '@sparktrack/ui';
 import { createClient } from '../../../../lib/supabase/client';
+import {
+  CapabilityRadarChart,
+  SignalDonutChart,
+} from '../../../../components/charts/capability-charts';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
 const API_BASE = API_URL.replace(/\/api\/?$/, '');
@@ -424,6 +428,74 @@ export default function MentorDashboardPage() {
                 <Sparkles size={17} className="mr-2" aria-hidden="true" />
                 {busy ? 'Saving observation…' : 'Submit 3-minute observation'}
               </Button>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Live Rubric Signal Shape & Queue Telemetry */}
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Live Observation Signal Preview</CardTitle>
+              <CardDescription>
+                Updates dynamically as you adjust the 7 behavioural indicators in your review above.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <CapabilityRadarChart
+                items={SIGNALS.map((sig) => ({
+                  label: sig.label,
+                  value: ((selectedSignals[sig.key] ?? 0) / 4) * 100,
+                  meta: selectedSignals[sig.key]
+                    ? INTENSITY_LABELS[selectedSignals[sig.key]!]
+                    : 'Not selected',
+                  detail: sig.hint,
+                }))}
+              />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Review Queue Breakdown</CardTitle>
+              <CardDescription>
+                Distribution of pending learner submissions by project category.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <SignalDonutChart
+                centerLabel={String(queue.length)}
+                centerSublabel="Awaiting Review"
+                segments={[
+                  {
+                    label: 'Project Submissions',
+                    value: queue.filter((q) => q.artifactType === 'PROJECT_SUBMISSION').length,
+                    color: '#2563eb',
+                  },
+                  {
+                    label: 'Code & Git Repos',
+                    value: queue.filter((q) => q.artifactType === 'GIT_REPOSITORY').length,
+                    color: '#7c3aed',
+                  },
+                  {
+                    label: 'Design & Prototypes',
+                    value: queue.filter((q) =>
+                      q.artifactType === 'DESIGN_PORTFOLIO' || q.artifactType === 'BUSINESS_PROTOTYPE',
+                    ).length,
+                    color: '#0891b2',
+                  },
+                  {
+                    label: 'Other Reflections',
+                    value: queue.filter(
+                      (q) =>
+                        !['PROJECT_SUBMISSION', 'GIT_REPOSITORY', 'DESIGN_PORTFOLIO', 'BUSINESS_PROTOTYPE'].includes(
+                          q.artifactType,
+                        ),
+                    ).length,
+                    color: '#059669',
+                  },
+                ]}
+              />
             </CardContent>
           </Card>
         </div>

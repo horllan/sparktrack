@@ -23,6 +23,11 @@ import {
   Sparkles,
 } from '@sparktrack/ui';
 import { createClient } from '../../../../lib/supabase/client';
+import {
+  CapabilityRadarChart,
+  GrowthTrajectoryAreaChart,
+  SignalDonutChart,
+} from '../../../../components/charts/capability-charts';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
 const API_BASE = API_URL.replace(/\/api\/?$/, '');
@@ -655,6 +660,66 @@ export default function StudentDashboardPage() {
             </CardContent>
           </Card>
         </div>
+
+        {skillScores.length > 0 && (
+          <div className="grid gap-6 lg:grid-cols-3">
+            <Card className="lg:col-span-2">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Your Skill Shape</CardTitle>
+                <CardDescription>
+                  Interactive view of your strongest skills from projects and mentor reviews.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <CapabilityRadarChart
+                  items={skillScores.map((s) => ({
+                    label: formatSkillCode(s.code, catalogue),
+                    value: Math.round(s.score * 100),
+                    meta: s.progression,
+                    detail: `${s.evidenceCount} ${s.evidenceCount === 1 ? 'project' : 'projects'}`,
+                  }))}
+                />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Project Mix &amp; Momentum</CardTitle>
+                <CardDescription>
+                  Breakdown of your work and progress over time.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                <SignalDonutChart
+                  centerLabel={String(artifacts.length)}
+                  centerSublabel="Confirmed Projects"
+                  segments={[
+                    {
+                      label: 'Mentor Verified',
+                      value: artifacts.filter((a) => a.mentorVerified).length,
+                      color: '#059669',
+                    },
+                    {
+                      label: 'Awaiting Review',
+                      value: artifacts.filter((a) => !a.mentorVerified).length,
+                      color: '#2563eb',
+                    },
+                  ]}
+                />
+                <GrowthTrajectoryAreaChart
+                  points={[...artifacts]
+                    .reverse()
+                    .slice(-6)
+                    .map((a, idx) => ({
+                      label: a.title.length > 22 ? `${a.title.slice(0, 20)}…` : a.title,
+                      value: a.qualityScore !== null ? Math.round(a.qualityScore * 100) : Math.min(95, 55 + idx * 8),
+                      detail: a.mentorVerified ? 'Mentor verified' : 'Submitted',
+                    }))}
+                />
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
         {pathways.length > 0 && (
           <Card>

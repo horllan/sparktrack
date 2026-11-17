@@ -20,6 +20,11 @@ import {
   UsersRound,
 } from '@sparktrack/ui';
 import { createClient } from '../../../../lib/supabase/client';
+import {
+  AnimatedTelemetryBars,
+  CapabilityRadarChart,
+  SignalDonutChart,
+} from '../../../../components/charts/capability-charts';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
 
@@ -71,6 +76,19 @@ interface GeneratedReport {
   learnerId: string;
   generatedAt: string;
   synthesisModel: string;
+  skillScores?: Array<{
+    code: string;
+    score: number;
+    progression: string;
+    evidenceCount: number;
+  }>;
+  pathwayAffinities?: Array<{
+    pathwayCode: string;
+    pathwayName: string;
+    pathwayType: string;
+    affinityScore: number;
+    isDivergentFromDeclared: boolean;
+  }>;
   guardrailResult: {
     passed: boolean;
     deterministicViolations: Array<{ phrase: string; sectionKey: string }>;
@@ -917,6 +935,89 @@ export default function ParentDashboardPage() {
                 </div>
               </CardHeader>
             </Card>
+
+            {(report.skillScores?.length || report.pathwayAffinities?.length) ? (
+              <div className="grid gap-5 lg:grid-cols-3">
+                <Card className="lg:col-span-2">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base">Observed Skill Shape</CardTitle>
+                    <CardDescription>
+                      Interactive view of the skills your child has shown across verified projects.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <CapabilityRadarChart
+                      items={(report.skillScores ?? []).map((s) => ({
+                        label: s.code.replace(/^SKILL_|^SIG_/, '').replace(/_/g, ' '),
+                        value: Math.round(s.score * 100),
+                        meta: s.progression,
+                        detail: `${s.evidenceCount} ${s.evidenceCount === 1 ? 'project' : 'projects'}`,
+                      }))}
+                    />
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base">Skill Maturity Mix</CardTitle>
+                    <CardDescription>
+                      How skills are distributed across learning stages.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <SignalDonutChart
+                      centerLabel={String(report.skillScores?.length ?? 0)}
+                      centerSublabel="Active Skills"
+                      segments={[
+                        {
+                          label: 'Advanced',
+                          value: (report.skillScores ?? []).filter((s) => s.progression === 'ADVANCED').length,
+                          color: '#059669',
+                        },
+                        {
+                          label: 'Competent',
+                          value: (report.skillScores ?? []).filter((s) => s.progression === 'COMPETENT').length,
+                          color: '#2563eb',
+                        },
+                        {
+                          label: 'Developing',
+                          value: (report.skillScores ?? []).filter((s) => s.progression === 'DEVELOPING').length,
+                          color: '#0891b2',
+                        },
+                        {
+                          label: 'Beginner',
+                          value: (report.skillScores ?? []).filter((s) => s.progression === 'BEGINNER').length,
+                          color: '#d97706',
+                        },
+                      ]}
+                    />
+                  </CardContent>
+                </Card>
+
+                {(report.pathwayAffinities?.length ?? 0) > 0 && (
+                  <Card className="lg:col-span-3">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-base">Career &amp; Entrepreneurship Pathways Worth Exploring</CardTitle>
+                      <CardDescription>
+                        Match strength based on current project evidence—options to try, not fixed predictions.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <AnimatedTelemetryBars
+                        items={(report.pathwayAffinities ?? []).slice(0, 5).map((p) => ({
+                          label: p.pathwayName,
+                          value: Math.round(p.affinityScore * 100),
+                          badge: p.isDivergentFromDeclared ? 'New strength' : p.pathwayType.replace(/_/g, ' '),
+                          subtitle: p.isDivergentFromDeclared
+                            ? 'Stronger than their initial interests—worth exploring together.'
+                            : 'Aligned with their declared curiosity areas.',
+                        }))}
+                      />
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+            ) : null}
 
             <div className="grid gap-4 md:grid-cols-2">
               {visibleKeys.map((key) => {
