@@ -1,0 +1,59 @@
+services:
+  - type: web
+    name: sparktrack-api-core
+    runtime: docker
+    dockerfilePath: ./apps/api-core/Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SPARKTRACK_STAGE
+        value: production
+      - key: PORT
+        value: "8080"
+      - key: CORS_ORIGIN
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_DATABASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        sync: false
+      - key: SUPABASE_JWKS_URL
+        sync: false
+      - key: SUPABASE_JWT_ISSUER
+        sync: false
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET_NAME
+        value: sparktrack-evidence-artifacts-prod
+      - key: CONSENT_OTP_SECRET
+        sync: false
+      - key: ADMIN_REGISTRATION_SECRET
+        sync: false
+      - key: CONSENT_VERIFICATION_URL
+        sync: false
+      - key: TERMII_API_KEY
+        sync: false
+      - key: TERMII_SENDER_ID
+        value: SparkTrack
+      - key: PAYSTACK_SECRET_KEY
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: GOOGLE_GENERATIVE_AI_API_KEY
+        sync: false
