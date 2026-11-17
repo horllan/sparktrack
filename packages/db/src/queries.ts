@@ -2475,32 +2475,40 @@ export const governanceQueries = {
       metadata?: Record<string, unknown>;
     },
   ) {
+    const normalizedOutcome = p.velocityFlagged
+      ? 'VELOCITY_ALERT'
+      : p.outcome === 'PII_DISCOVERY_REDACTED'
+        ? 'PII_DISCOVERY_REDACTED'
+        : p.maskingApplied
+          ? 'DYNAMICALLY_MASKED'
+          : 'ALLOWED';
+    const details = JSON.stringify({
+      organisationId: p.organisationId ?? null,
+      recordsReturned: p.recordsReturned ?? 0,
+      rawOutcome: p.outcome ?? normalizedOutcome,
+      ...(p.metadata ?? {}),
+    });
+
     await sql`
       INSERT INTO governance.data_activity_audit (
         actor_id,
         actor_role,
-        organisation_id,
         action_type,
         resource_domain,
-        classification_accessed,
-        records_returned,
-        masking_applied,
-        velocity_flagged,
+        classification_tier,
+        target_ref,
         outcome,
-        metadata
+        details
       )
       VALUES (
         ${p.actorId ?? null}::uuid,
         ${p.actorRole},
-        ${p.organisationId ?? null}::uuid,
         ${p.actionType},
-        ${p.resourceDomain}::governance.data_mesh_domain,
-        ${p.classificationAccessed}::governance.data_classification_tier,
-        ${p.recordsReturned ?? 0},
-        ${p.maskingApplied ?? true},
-        ${p.velocityFlagged ?? false},
-        ${p.outcome ?? 'ALLOWED'},
-        ${JSON.stringify(p.metadata ?? {})}::jsonb
+        ${p.resourceDomain},
+        ${p.classificationAccessed},
+        ${p.organisationId ?? null},
+        ${normalizedOutcome},
+        ${details}
       )
     `.execute(db);
   },
@@ -2512,13 +2520,11 @@ export const governanceQueries = {
         schema_name: string;
         table_name: string;
         column_name: string;
-        mesh_domain: string;
+        domain_mesh: string;
         classification_tier: string;
-        protection_technique: string;
-        data_steward_role: string;
+        masking_strategy: string;
         retention_policy: string;
-        ndpa_lawful_basis: string;
-        contains_minor_pii: boolean;
+        compliance_framework: string;
         description: string;
       }>`
         SELECT
@@ -2526,13 +2532,11 @@ export const governanceQueries = {
           schema_name,
           table_name,
           column_name,
-          mesh_domain::text,
-          classification_tier::text,
-          protection_technique::text,
-          data_steward_role,
+          domain_mesh,
+          classification_tier,
+          masking_strategy,
           retention_policy,
-          ndpa_lawful_basis,
-          contains_minor_pii,
+          compliance_framework,
           description
         FROM governance.data_catalog
         ORDER BY classification_tier DESC, schema_name, table_name, column_name
@@ -2544,8 +2548,8 @@ export const governanceQueries = {
       }>`
         SELECT
           COUNT(*)::text AS total_columns,
-          COUNT(*) FILTER (WHERE discovery_status = 'CATALOGED')::text AS cataloged_columns,
-          COUNT(*) FILTER (WHERE contains_minor_pii = TRUE)::text AS minor_pii_columns
+          COUNT(*) FILTER (WHERE is_explicitly_cataloged = TRUE)::text AS cataloged_columns,
+          COUNT(*) FILTER (WHERE effective_classification = 'TIER_4_RESTRICTED_MINOR_SECRETS')::text AS minor_pii_columns
         FROM governance.vw_schema_discovery
       `.execute(db),
       sql<{ total_products: string }>`
@@ -2553,30 +2557,26 @@ export const governanceQueries = {
         FROM governance.dp_verified_talent_mesh
       `.execute(db),
       sql<{
-        audit_seq: string;
+        id: string;
         actor_role: string;
         action_type: string;
         resource_domain: string;
-        classification_accessed: string;
-        records_returned: number;
-        masking_applied: boolean;
-        velocity_flagged: boolean;
+        classification_tier: string;
         outcome: string;
-        recorded_at: Date;
+        details: string;
+        created_at: Date;
       }>`
         SELECT
-          audit_seq::text,
+          id,
           actor_role,
           action_type,
-          resource_domain::text,
-          classification_accessed::text,
-          records_returned,
-          masking_applied,
-          velocity_flagged,
+          resource_domain,
+          classification_tier,
           outcome,
-          recorded_at
+          details,
+          created_at
         FROM governance.data_activity_audit
-        ORDER BY audit_seq DESC
+        ORDER BY created_at DESC
         LIMIT 25
       `.execute(db),
     ]);
@@ -2587,13 +2587,13 @@ export const governanceQueries = {
       schemaName: r.schema_name,
       tableName: r.table_name,
       columnName: r.column_name,
-      meshDomain: r.mesh_domain,
+      meshDomain: r.domain_mesh,
       classificationTier: r.classification_tier,
-      protectionTechnique: r.protection_technique,
-      dataStewardRole: r.data_steward_role,
+      protectionTechnique: r.masking_strategy,
+      dataStewardRole: 'Data Protection Officer',
       retentionPolicy: r.retention_policy,
-      ndpaLawfulBasis: r.ndpa_lawful_basis,
-      containsMinorPii: r.contains_minor_pii,
+      ndpaLawfulBasis: r.compliance_framework,
+      containsMinorPii: r.classification_tier === 'TIER_4_RESTRICTED_MINOR_SECRETS',
       description: r.description,
     }));
 
@@ -2623,17 +2623,17 @@ export const governanceQueries = {
       tierBreakdown,
       domainBreakdown,
       catalog,
-      recentActivity: damRes.rows.map((row) => ({
-        auditSeq: Number(row.audit_seq),
+      recentActivity: damRes.rows.map((row, idx) => ({
+        auditSeq: damRes.rows.length - idx,
         actorRole: row.actor_role,
         actionType: row.action_type,
         resourceDomain: row.resource_domain,
-        classificationAccessed: row.classification_accessed,
-        recordsReturned: row.records_returned,
-        maskingApplied: row.masking_applied,
-        velocityFlagged: row.velocity_flagged,
+        classificationAccessed: row.classification_tier,
+        recordsReturned: 1,
+        maskingApplied: row.outcome === 'DYNAMICALLY_MASKED' || row.outcome === 'PII_DISCOVERY_REDACTED',
+        velocityFlagged: row.outcome === 'VELOCITY_ALERT',
         outcome: row.outcome,
-        recordedAt: row.recorded_at.toISOString(),
+        recordedAt: row.created_at.toISOString(),
       })),
     };
   },
