@@ -16,6 +16,7 @@ import { LearningModule } from './platform-modules/learning/learning.module';
 import { MentorshipModule } from './platform-modules/mentorship/mentorship.module';
 import { BillingModule } from './platform-modules/billing/billing.module';
 import { SupportModule } from './platform-modules/support/support.module';
+import { PartnerModule } from './platform-modules/partner/partner.module';
 
 import { DatabaseModule } from './common/database/database.module';
 import { AuthCoreModule } from './common/auth/auth-core.module';
@@ -65,7 +66,7 @@ function redisConnection() {
     EvidenceEngineModule, SkillEngineModule, CapabilityGraphModule, ProgressEngineModule,
     PathwayEngineModule, RecommendationEngineModule, PipelineModule,
     // Platform modules
-    AuthModule, LearningModule, MentorshipModule, BillingModule, SupportModule,
+    AuthModule, LearningModule, MentorshipModule, BillingModule, SupportModule, PartnerModule,
   ],
   providers: [{ provide: APP_FILTER, useClass: ZodExceptionFilter }],
 })

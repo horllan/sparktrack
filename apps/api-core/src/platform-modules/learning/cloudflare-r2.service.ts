@@ -41,24 +41,7 @@ export class CloudflareR2Service {
 
     const credentials = this.getCredentials();
     if (!credentials) {
-      const stage = (
-        this.config.get<string>('SPARKTRACK_STAGE') ??
-        this.config.get<string>('NODE_ENV') ??
-        'development'
-      ).toLowerCase();
-      if (stage === 'production') {
-        throw new ServiceUnavailableException('Cloudflare R2 is not configured for evidence uploads.');
-      }
-      return {
-        provider: 'SANDBOX_SIMULATION',
-        mode: 'SANDBOX_SIMULATION',
-        bucketName,
-        r2Key,
-        uploadUrl: `sandbox://r2-local/${bucketName}/${r2Key}`,
-        downloadUrl: `sandbox://r2-local/${bucketName}/${r2Key}`,
-        expiresAt,
-        contentType,
-      };
+      throw new ServiceUnavailableException('Cloudflare R2 is not configured for evidence uploads.');
     }
 
     const host = `${credentials.accountId}.r2.cloudflarestorage.com`;

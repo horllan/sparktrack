@@ -1,4 +1,4 @@
-import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { sql, type Kysely, type RawBuilder } from 'kysely';
 import type { SparkTrackDatabase } from './kysely-types.js';
 
@@ -2663,5 +2663,591 @@ export const governanceQueries = {
       findings,
       piiDetected: findings.length > 0,
     };
+  },
+};
+
+function deriveAesKey(rawSecret: string): Buffer {
+  return createHash('sha256').update(rawSecret, 'utf8').digest();
+}
+
+export function encryptWebhookSecret(plaintext: string, encryptionKey: string): string {
+  const iv = randomBytes(12);
+  const key = deriveAesKey(encryptionKey);
+  const cipher = createCipheriv('aes-256-gcm', key, iv);
+  const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return `${iv.toString('base64url')}.${tag.toString('base64url')}.${encrypted.toString('base64url')}`;
+}
+
+export function decryptWebhookSecret(ciphertext: string, encryptionKey: string): string {
+  const [ivB64, tagB64, encB64] = ciphertext.split('.');
+  if (!ivB64 || !tagB64 || !encB64) {
+    throw new Error('Malformed encrypted webhook secret');
+  }
+  const decipher = createDecipheriv(
+    'aes-256-gcm',
+    deriveAesKey(encryptionKey),
+    Buffer.from(ivB64, 'base64url'),
+  );
+  decipher.setAuthTag(Buffer.from(tagB64, 'base64url'));
+  const decrypted = Buffer.concat([
+    decipher.update(Buffer.from(encB64, 'base64url')),
+    decipher.final(),
+  ]);
+  return decrypted.toString('utf8');
+}
+
+export function signPartnerWebhookPayload(payloadJson: string, secret: string, epochSeconds: number): string {
+  const sig = createHmac('sha256', secret)
+    .update(`${epochSeconds}.${payloadJson}`)
+    .digest('hex');
+  return `t=${epochSeconds},v1=${sig}`;
+}
+
+export const partnerQueries = {
+  async upsertExternalLearner(
+    db: Db,
+    p: {
+      organisationId: string;
+      apiKeyId: string | null;
+      externalLearnerId: string;
+      fullName: string;
+      ageGroup: 'UNDER_18' | 'ADULT';
+      dateOfBirth?: string | null;
+      learnerStage: string;
+      educationStage?: string;
+      educationLevel?: string | null;
+      learningGoal?: string;
+      declaredInterests: string[];
+      consentStatus: 'PENDING_PARENTAL_CONSENT' | 'VERIFIED_ACTIVE' | 'RESTRICTED_INTERNAL_ONLY' | 'REVOKED';
+      attestationMethod:
+        | 'ADULT_SELF_CONSENT'
+        | 'GUARDIAN_WRITTEN_CONSENT'
+        | 'GUARDIAN_DIGITAL_CONSENT'
+        | 'INSTITUTIONAL_ENROLMENT_AGREEMENT'
+        | 'CONSENT_WITHDRAWN';
+      guardianName?: string | null;
+      guardianContact?: string | null;
+      evidenceReference?: string | null;
+      allowPublicPortfolio?: boolean;
+      allowPartnerTalentDiscovery?: boolean;
+    },
+  ) {
+    return db.transaction().execute(async (trx) => {
+      const existing = await sql<{ learner_id: string }>`
+        SELECT learner_id
+        FROM core.external_learner_links
+        WHERE organisation_id = ${p.organisationId}::uuid
+          AND external_learner_id = ${p.externalLearnerId}
+        FOR UPDATE
+      `.execute(trx);
+
+      const isVerified = p.consentStatus === 'VERIFIED_ACTIVE';
+      const allowPublic = isVerified && Boolean(p.allowPublicPortfolio);
+      const allowPartner = isVerified && Boolean(p.allowPartnerTalentDiscovery);
+      const educationStage = p.educationStage?.trim() || p.learnerStage;
+
+      let learnerId: string;
+      let created = false;
+      let publicShareToken: string | null = null;
+
+      if (existing.rows[0]) {
+        learnerId = existing.rows[0].learner_id;
+        await sql`
+          UPDATE core.users
+          SET full_name = ${p.fullName.trim()}
+          WHERE id = ${learnerId}::uuid
+        `.execute(trx);
+
+        const curToken = await sql<{ public_share_token: string | null }>`
+          SELECT public_share_token
+          FROM core.learner_profiles
+          WHERE learner_id = ${learnerId}::uuid
+        `.execute(trx);
+
+        publicShareToken = allowPublic
+          ? (curToken.rows[0]?.public_share_token ?? randomBytes(18).toString('base64url'))
+          : null;
+
+        await sql`
+          UPDATE core.learner_profiles
+          SET age_group = ${p.ageGroup},
+              date_of_birth = COALESCE(${p.dateOfBirth ?? null}::date, date_of_birth),
+              education_stage = ${educationStage},
+              learner_stage = ${p.learnerStage},
+              education_level = COALESCE(${p.educationLevel ?? null}, education_level),
+              learning_goal = COALESCE(${p.learningGoal ?? null}, learning_goal),
+              declared_interests = ${sql.val(p.declaredInterests)}::text[],
+              consent_status = ${p.consentStatus}::core.consent_status,
+              consent_verified_at = CASE WHEN ${isVerified} THEN COALESCE(consent_verified_at, NOW()) ELSE NULL END,
+              consent_verification_method = CASE WHEN ${isVerified} THEN ${p.attestationMethod} ELSE NULL END,
+              allow_public_portfolio = ${allowPublic},
+              allow_partner_talent_discovery = ${allowPartner},
+              public_share_token = ${publicShareToken},
+              public_share_token_created_at = CASE WHEN ${publicShareToken !== null} THEN COALESCE(public_share_token_created_at, NOW()) ELSE NULL END,
+              updated_at = NOW()
+          WHERE learner_id = ${learnerId}::uuid
+        `.execute(trx);
+
+        await sql`
+          UPDATE core.external_learner_links
+          SET updated_at = NOW()
+          WHERE organisation_id = ${p.organisationId}::uuid
+            AND external_learner_id = ${p.externalLearnerId}
+        `.execute(trx);
+      } else {
+        created = true;
+        const userIns = await sql<{ id: string }>`
+          INSERT INTO core.users (role, full_name, organisation_id, is_active)
+          VALUES ('LEARNER'::core.user_role, ${p.fullName.trim()}, ${p.organisationId}::uuid, TRUE)
+          RETURNING id
+        `.execute(trx);
+        learnerId = userIns.rows[0]!.id;
+
+        publicShareToken = allowPublic ? randomBytes(18).toString('base64url') : null;
+
+        await sql`
+          INSERT INTO core.learner_profiles (
+            learner_id,
+            date_of_birth,
+            age_group,
+            education_stage,
+            learner_stage,
+            education_level,
+            learning_goal,
+            current_school_id,
+            consent_status,
+            consent_verified_at,
+            consent_verification_method,
+            allow_public_portfolio,
+            allow_partner_talent_discovery,
+            public_share_token,
+            public_share_token_created_at,
+            declared_interests
+          )
+          VALUES (
+            ${learnerId}::uuid,
+            ${p.dateOfBirth ?? null}::date,
+            ${p.ageGroup},
+            ${educationStage},
+            ${p.learnerStage},
+            ${p.educationLevel ?? null},
+            ${p.learningGoal ?? 'BUILD_PRACTICAL_SKILLS'},
+            ${p.organisationId}::uuid,
+            ${p.consentStatus}::core.consent_status,
+            ${isVerified ? sql`NOW()` : sql`NULL`},
+            ${isVerified ? p.attestationMethod : null},
+            ${allowPublic},
+            ${allowPartner},
+            ${publicShareToken},
+            ${publicShareToken ? sql`NOW()` : sql`NULL`},
+            ${sql.val(p.declaredInterests)}::text[]
+          )
+        `.execute(trx);
+
+        await sql`
+          INSERT INTO core.external_learner_links (
+            organisation_id, external_learner_id, learner_id, created_by_key_id
+          )
+          VALUES (
+            ${p.organisationId}::uuid,
+            ${p.externalLearnerId},
+            ${learnerId}::uuid,
+            ${p.apiKeyId}::uuid
+          )
+        `.execute(trx);
+      }
+
+      const contactHash = p.guardianContact?.trim()
+        ? sha256Hex(p.guardianContact.trim().toLowerCase())
+        : null;
+
+      await sql`
+        INSERT INTO core.partner_consent_attestations (
+          organisation_id,
+          learner_id,
+          api_key_id,
+          consent_status,
+          attestation_method,
+          guardian_name,
+          guardian_contact_sha256,
+          evidence_reference,
+          allow_public_portfolio,
+          allow_partner_talent_discovery,
+          attested_at
+        )
+        VALUES (
+          ${p.organisationId}::uuid,
+          ${learnerId}::uuid,
+          ${p.apiKeyId}::uuid,
+          ${p.consentStatus}::core.consent_status,
+          ${p.attestationMethod},
+          ${p.guardianName?.trim() ?? null},
+          ${contactHash},
+          ${p.evidenceReference?.trim() ?? null},
+          ${allowPublic},
+          ${allowPartner},
+          NOW()
+        )
+      `.execute(trx);
+
+      return {
+        created,
+        externalLearnerId: p.externalLearnerId,
+        learnerRef: `SPK-${learnerId.slice(0, 8).toUpperCase()}`,
+        learnerId,
+        consentStatus: p.consentStatus,
+        allowPublicPortfolio: allowPublic,
+        publicShareToken,
+      };
+    });
+  },
+
+  async resolveExternalLearner(db: Db, organisationId: string, externalLearnerId: string) {
+    const r = await sql<{
+      learner_id: string;
+      external_learner_id: string;
+      full_name: string;
+      education_stage: string;
+      learner_stage: string;
+      learning_goal: string;
+      consent_status: string;
+      allow_public_portfolio: boolean;
+      public_share_token: string | null;
+      declared_interests: string[];
+    }>`
+      SELECT
+        l.learner_id,
+        l.external_learner_id,
+        u.full_name,
+        lp.education_stage,
+        lp.learner_stage,
+        lp.learning_goal,
+        lp.consent_status::text,
+        lp.allow_public_portfolio,
+        lp.public_share_token,
+        lp.declared_interests
+      FROM core.external_learner_links l
+      JOIN core.learner_profiles lp ON lp.learner_id = l.learner_id
+      JOIN core.users u ON u.id = l.learner_id
+      WHERE l.organisation_id = ${organisationId}::uuid
+        AND l.external_learner_id = ${externalLearnerId}
+      LIMIT 1
+    `.execute(db);
+
+    const row = r.rows[0];
+    if (!row) return null;
+    return {
+      learnerId: row.learner_id,
+      externalLearnerId: row.external_learner_id,
+      learnerRef: `SPK-${row.learner_id.slice(0, 8).toUpperCase()}`,
+      fullName: row.full_name,
+      educationStage: row.education_stage,
+      learnerStage: row.learner_stage,
+      learningGoal: row.learning_goal,
+      consentStatus: row.consent_status,
+      allowPublicPortfolio: row.allow_public_portfolio,
+      publicShareToken: row.public_share_token,
+      declaredInterests: row.declared_interests ?? [],
+    };
+  },
+
+  async claimIdempotency(
+    db: Db,
+    p: { apiKeyId: string; idempotencyKey: string; requestFingerprint: string },
+  ) {
+    const ins = await sql<{ state: string }>`
+      INSERT INTO core.partner_idempotency_keys (api_key_id, idempotency_key, request_fingerprint, state)
+      VALUES (${p.apiKeyId}::uuid, ${p.idempotencyKey}, ${p.requestFingerprint}, 'IN_PROGRESS')
+      ON CONFLICT (api_key_id, idempotency_key) DO NOTHING
+      RETURNING state
+    `.execute(db);
+    if (ins.rows[0]) return { status: 'claimed' as const };
+
+    const existing = await sql<{
+      request_fingerprint: string;
+      state: string;
+      response_status: number | null;
+      response_body: unknown;
+    }>`
+      SELECT request_fingerprint, state, response_status, response_body
+      FROM core.partner_idempotency_keys
+      WHERE api_key_id = ${p.apiKeyId}::uuid AND idempotency_key = ${p.idempotencyKey}
+    `.execute(db);
+    const row = existing.rows[0];
+    if (!row) return { status: 'claimed' as const };
+    if (row.request_fingerprint !== p.requestFingerprint) {
+      return { status: 'conflict' as const };
+    }
+    if (row.state === 'COMPLETED') {
+      return {
+        status: 'replay' as const,
+        responseStatus: row.response_status ?? 200,
+        responseBody: row.response_body,
+      };
+    }
+    return { status: 'in_progress' as const };
+  },
+
+  async completeIdempotency(
+    db: Db,
+    p: { apiKeyId: string; idempotencyKey: string; responseStatus: number; responseBody: unknown },
+  ) {
+    await sql`
+      UPDATE core.partner_idempotency_keys
+      SET state = 'COMPLETED',
+          response_status = ${p.responseStatus},
+          response_body = ${JSON.stringify(p.responseBody)}::jsonb
+      WHERE api_key_id = ${p.apiKeyId}::uuid AND idempotency_key = ${p.idempotencyKey}
+    `.execute(db);
+  },
+
+  async releaseIdempotencyOnError(db: Db, apiKeyId: string, idempotencyKey: string) {
+    await sql`
+      DELETE FROM core.partner_idempotency_keys
+      WHERE api_key_id = ${apiKeyId}::uuid
+        AND idempotency_key = ${idempotencyKey}
+        AND state = 'IN_PROGRESS'
+    `.execute(db);
+  },
+
+  async registerWebhookEndpoint(
+    db: Db,
+    p: {
+      organisationId: string;
+      createdByKeyId: string | null;
+      url: string;
+      description?: string;
+      events: string[];
+      encryptionKey: string;
+    },
+  ) {
+    const rawSecret = `whsec_spk_${randomBytes(24).toString('base64url')}`;
+    const secretPrefix = rawSecret.slice(0, 14);
+    const ciphertext = encryptWebhookSecret(rawSecret, p.encryptionKey);
+
+    const r = await sql<{ id: string; created_at: Date }>`
+      INSERT INTO core.partner_webhook_endpoints (
+        organisation_id, url, description, events, secret_ciphertext, secret_prefix, created_by_key_id
+      )
+      VALUES (
+        ${p.organisationId}::uuid,
+        ${p.url.trim()},
+        ${p.description?.trim() ?? null},
+        ${sql.val(p.events)}::text[],
+        ${ciphertext},
+        ${secretPrefix},
+        ${p.createdByKeyId}::uuid
+      )
+      RETURNING id, created_at
+    `.execute(db);
+
+    const row = r.rows[0]!;
+    return {
+      id: row.id,
+      url: p.url.trim(),
+      description: p.description?.trim() ?? null,
+      events: p.events,
+      secret: rawSecret,
+      secretPrefix,
+      isActive: true,
+      createdAt: row.created_at.toISOString(),
+    };
+  },
+
+  async listWebhookEndpoints(db: Db, organisationId: string) {
+    const r = await sql<{
+      id: string;
+      url: string;
+      description: string | null;
+      events: string[];
+      secret_prefix: string;
+      is_active: boolean;
+      consecutive_failures: number;
+      disabled_reason: string | null;
+      created_at: Date;
+    }>`
+      SELECT id, url, description, events, secret_prefix, is_active, consecutive_failures, disabled_reason, created_at
+      FROM core.partner_webhook_endpoints
+      WHERE organisation_id = ${organisationId}::uuid
+      ORDER BY created_at DESC
+      LIMIT 50
+    `.execute(db);
+
+    return r.rows.map((row) => ({
+      id: row.id,
+      url: row.url,
+      description: row.description,
+      events: row.events,
+      secretPrefix: row.secret_prefix,
+      isActive: row.is_active,
+      consecutiveFailures: row.consecutive_failures,
+      disabledReason: row.disabled_reason,
+      createdAt: row.created_at.toISOString(),
+    }));
+  },
+
+  async deleteWebhookEndpoint(db: Db, organisationId: string, endpointId: string) {
+    const r = await sql<{ id: string }>`
+      DELETE FROM core.partner_webhook_endpoints
+      WHERE id = ${endpointId}::uuid AND organisation_id = ${organisationId}::uuid
+      RETURNING id
+    `.execute(db);
+    return r.rows[0] ? { status: 'deleted' as const, id: r.rows[0].id } : { status: 'not_found' as const };
+  },
+
+  async enqueueWebhookEvent(
+    db: Db,
+    p: { organisationId: string; eventType: string; payload: Record<string, unknown> },
+  ) {
+    const eventId = randomUUID();
+    const envelope = {
+      id: eventId,
+      type: p.eventType,
+      createdAt: new Date().toISOString(),
+      data: p.payload,
+    };
+
+    const r = await sql<{ id: string }>`
+      INSERT INTO core.partner_webhook_deliveries (
+        endpoint_id, organisation_id, event_id, event_type, payload
+      )
+      SELECT
+        e.id,
+        e.organisation_id,
+        ${eventId}::uuid,
+        ${p.eventType},
+        ${JSON.stringify(envelope)}::jsonb
+      FROM core.partner_webhook_endpoints e
+      WHERE e.organisation_id = ${p.organisationId}::uuid
+        AND e.is_active = TRUE
+        AND (${p.eventType} = ANY(e.events) OR '*' = ANY(e.events))
+      RETURNING id
+    `.execute(db);
+
+    return { eventId, queuedCount: r.rows.length };
+  },
+
+  async claimPendingWebhookDeliveries(db: Db, limit = 20) {
+    return db.transaction().execute(async (trx) => {
+      const r = await sql<{
+        delivery_id: string;
+        endpoint_id: string;
+        organisation_id: string;
+        event_id: string;
+        event_type: string;
+        payload: unknown;
+        attempt_count: number;
+        url: string;
+        secret_ciphertext: string;
+      }>`
+        WITH due AS (
+          SELECT d.id
+          FROM core.partner_webhook_deliveries d
+          JOIN core.partner_webhook_endpoints e ON e.id = d.endpoint_id
+          WHERE e.is_active = TRUE
+            AND (
+              (d.status IN ('PENDING', 'FAILED') AND d.next_attempt_at <= NOW())
+              OR (d.status = 'IN_FLIGHT' AND d.locked_until < NOW())
+            )
+          ORDER BY d.next_attempt_at ASC
+          LIMIT ${limit}
+          FOR UPDATE OF d SKIP LOCKED
+        ),
+        claimed AS (
+          UPDATE core.partner_webhook_deliveries d
+          SET status = 'IN_FLIGHT',
+              locked_until = NOW() + INTERVAL '30 seconds',
+              attempt_count = d.attempt_count + 1
+          FROM due
+          WHERE d.id = due.id
+          RETURNING d.id, d.endpoint_id, d.organisation_id, d.event_id, d.event_type, d.payload, d.attempt_count
+        )
+        SELECT
+          c.id AS delivery_id,
+          c.endpoint_id,
+          c.organisation_id,
+          c.event_id,
+          c.event_type,
+          c.payload,
+          c.attempt_count,
+          e.url,
+          e.secret_ciphertext
+        FROM claimed c
+        JOIN core.partner_webhook_endpoints e ON e.id = c.endpoint_id
+      `.execute(trx);
+
+      return r.rows.map((row) => ({
+        deliveryId: row.delivery_id,
+        endpointId: row.endpoint_id,
+        organisationId: row.organisation_id,
+        eventId: row.event_id,
+        eventType: row.event_type,
+        payload: row.payload,
+        attemptCount: row.attempt_count,
+        url: row.url,
+        secretCiphertext: row.secret_ciphertext,
+      }));
+    });
+  },
+
+  async markWebhookDeliveryResult(
+    db: Db,
+    p: {
+      deliveryId: string;
+      endpointId: string;
+      attemptCount: number;
+      success: boolean;
+      responseStatus?: number | null;
+      error?: string | null;
+    },
+  ) {
+    return db.transaction().execute(async (trx) => {
+      if (p.success) {
+        await sql`
+          UPDATE core.partner_webhook_deliveries
+          SET status = 'DELIVERED',
+              last_response_status = ${p.responseStatus ?? 200},
+              last_error = NULL,
+              delivered_at = NOW(),
+              locked_until = NULL
+          WHERE id = ${p.deliveryId}::uuid
+        `.execute(trx);
+
+        await sql`
+          UPDATE core.partner_webhook_endpoints
+          SET consecutive_failures = 0,
+              updated_at = NOW()
+          WHERE id = ${p.endpointId}::uuid
+        `.execute(trx);
+        return;
+      }
+
+      const maxAttempts = 6;
+      const isDead = p.attemptCount >= maxAttempts;
+      const backoffSeconds = Math.min(3600, Math.pow(2, p.attemptCount) * 15);
+
+      await sql`
+        UPDATE core.partner_webhook_deliveries
+        SET status = ${isDead ? 'DEAD' : 'FAILED'},
+            last_response_status = ${p.responseStatus ?? null},
+            last_error = ${p.error?.slice(0, 500) ?? 'Delivery failed'},
+            next_attempt_at = NOW() + (${backoffSeconds} || ' seconds')::interval,
+            locked_until = NULL
+        WHERE id = ${p.deliveryId}::uuid
+      `.execute(trx);
+
+      await sql`
+        UPDATE core.partner_webhook_endpoints
+        SET consecutive_failures = consecutive_failures + 1,
+            is_active = CASE WHEN consecutive_failures + 1 >= 10 THEN FALSE ELSE is_active END,
+            disabled_reason = CASE
+              WHEN consecutive_failures + 1 >= 10 THEN 'Auto-disabled after 10 consecutive webhook delivery failures'
+              ELSE disabled_reason
+            END,
+            updated_at = NOW()
+        WHERE id = ${p.endpointId}::uuid
+      `.execute(trx);
+    });
   },
 };

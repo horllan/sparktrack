@@ -1,5 +1,13 @@
 import {
-  ForbiddenException, Inject, Injectable, SetMetadata, UnauthorizedException, createParamDecorator,
+  ForbiddenException,
+  HttpException,
+  HttpStatus,
+  Inject,
+  Injectable,
+  Optional,
+  SetMetadata,
+  UnauthorizedException,
+  createParamDecorator,
 } from '@nestjs/common';
 import type { CanActivate, ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
@@ -10,9 +18,16 @@ import { accessQueries, apiKeyQueries } from '@sparktrack/db';
 import type { Kysely } from 'kysely';
 import type { SparkTrackDatabase } from '@sparktrack/db';
 import { KYSELY } from '../database/database.module';
+import { UpstashRedisService } from '../cache/upstash-redis.service';
 
 export type Role = 'LEARNER' | 'PARENT' | 'MENTOR' | 'SCHOOL_ADMIN' | 'ORG_PARTNER' | 'SUPER_ADMIN';
-export interface AuthUser { id: string; role: Role; organisationId: string | null }
+export interface AuthUser {
+  id: string;
+  role: Role;
+  organisationId: string | null;
+  apiKeyId?: string;
+  apiKeyScopes?: string[];
+}
 
 export const IS_PUBLIC = 'isPublic';
 export const Public = () => SetMetadata(IS_PUBLIC, true);
@@ -20,6 +35,8 @@ export const ALLOW_UNPROVISIONED_LEARNER = 'allowUnprovisionedLearner';
 export const AllowUnprovisionedLearner = () => SetMetadata(ALLOW_UNPROVISIONED_LEARNER, true);
 export const ROLES_KEY = 'roles';
 export const Roles = (...roles: Role[]) => SetMetadata(ROLES_KEY, roles);
+export const SCOPES_KEY = 'apiKeyScopes';
+export const Scopes = (...scopes: string[]) => SetMetadata(SCOPES_KEY, scopes);
 export const CurrentUser = createParamDecorator((_d, ctx: ExecutionContext): AuthUser => ctx.switchToHttp().getRequest().user);
 
 /**
@@ -35,6 +52,7 @@ export class AuthGuard implements CanActivate {
     @Inject(Reflector) private readonly reflector: Reflector,
     @Inject(ConfigService) private readonly config: ConfigService,
     @Inject(KYSELY) private readonly db: Kysely<SparkTrackDatabase>,
+    @Optional() @Inject(UpstashRedisService) private readonly redis?: UpstashRedisService,
   ) {}
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
@@ -52,10 +70,40 @@ export class AuthGuard implements CanActivate {
     if (rawApiKey) {
       const verifiedKey = await apiKeyQueries.verifyKey(this.db, rawApiKey);
       if (!verifiedKey) throw new UnauthorizedException('Invalid or revoked API key');
+
+      if (this.redis) {
+        const rl = await this.redis.checkRateLimit(
+          `sparktrack:rl:apikey:${verifiedKey.keyId}`,
+          verifiedKey.rateLimitPerMinute,
+          60,
+        );
+        if (!rl.allowed) {
+          throw new HttpException(
+            `API key rate limit exceeded (${verifiedKey.rateLimitPerMinute} req/min).`,
+            HttpStatus.TOO_MANY_REQUESTS,
+          );
+        }
+      }
+
+      const requiredScopes = this.reflector.getAllAndOverride<string[]>(SCOPES_KEY, [
+        ctx.getHandler(),
+        ctx.getClass(),
+      ]);
+      if (requiredScopes?.length) {
+        const hasAll = requiredScopes.every((s) => verifiedKey.scopes.includes(s));
+        if (!hasAll) {
+          throw new ForbiddenException(
+            `API key missing required scope(s): ${requiredScopes.join(', ')}`,
+          );
+        }
+      }
+
       const user: AuthUser = {
         id: verifiedKey.userId,
         role: verifiedKey.role as Role,
         organisationId: verifiedKey.organisationId,
+        apiKeyId: verifiedKey.keyId,
+        apiKeyScopes: verifiedKey.scopes,
       };
       req.user = user;
       const roles = this.reflector.getAllAndOverride<Role[]>(ROLES_KEY, [ctx.getHandler(), ctx.getClass()]);
