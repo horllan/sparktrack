@@ -114,18 +114,120 @@ const DEFAULT_SECONDARY_SURVEY: SurveyDefinition = {
   ],
 };
 
+const DEFAULT_PROJECT_SURVEY: SurveyDefinition = {
+  id: 'default-sparkintel-project-discovery',
+  slug: 'sparkintel-project-discovery',
+  title: 'SparkIntel Student Discovery Survey',
+  description:
+    'A brief 1-minute anonymous survey for Junior and Senior Secondary students about career awareness, skills, and learning outside school. No name, email, or phone number is collected.',
+  targetAudience: 'JSS1_TO_SS3',
+  questions: [
+    {
+      id: 'class_level',
+      prompt: 'What class are you currently in?',
+      type: 'single',
+      required: true,
+      options: ['JSS1', 'JSS2', 'JSS3', 'SS1', 'SS2', 'SS3'],
+    },
+    {
+      id: 'career_understanding',
+      prompt: 'How clearly do you understand what skills are needed for a career you like?',
+      type: 'single',
+      required: true,
+      options: ['Very clearly', 'Somewhat clear', 'Not clear yet', 'Still exploring'],
+    },
+    {
+      id: 'career_barrier',
+      prompt: 'What makes it hardest to know what career or skill path fits you? (Pick up to 2)',
+      type: 'multi',
+      maxSelect: 2,
+      required: true,
+      options: [
+        'Not knowing what careers exist',
+        'Not knowing what skills are needed',
+        'No hands-on practice at school',
+        'No mentor or guide',
+        'Schoolwork & exam pressure',
+      ],
+    },
+    {
+      id: 'top_interests',
+      prompt: 'Which areas are you MOST interested in exploring? (Pick up to 2)',
+      type: 'multi',
+      maxSelect: 2,
+      required: true,
+      options: [
+        'Coding & Software',
+        'Cybersecurity & Digital Safety',
+        'Product & Graphic Design',
+        'AI & Data',
+        'Robotics & Hardware',
+        'Business & Entrepreneurship',
+      ],
+    },
+    {
+      id: 'outside_learning_status',
+      prompt: 'Have you ever tried learning a practical skill outside normal school lessons?',
+      type: 'single',
+      required: true,
+      options: ['Yes, and I kept going', 'Yes, but I stopped', 'No, not yet', 'I want to start'],
+    },
+    {
+      id: 'learning_blocker',
+      prompt: 'What usually makes students stop learning a new skill? (Pick up to 2)',
+      type: 'multi',
+      maxSelect: 2,
+      required: true,
+      options: [
+        'No laptop or internet data',
+        'Too confusing without a mentor',
+        'No real project to practice on',
+        'Schoolwork & exam pressure',
+        'Lost motivation',
+      ],
+    },
+    {
+      id: 'holiday_interest',
+      prompt: 'Would you join a short hands-on holiday or weekend project programme?',
+      type: 'single',
+      required: true,
+      options: ['Yes, holiday bootcamp', 'Yes, weekend club', 'Yes, mobile self-paced', 'Not sure yet'],
+    },
+    {
+      id: 'one_project_wish',
+      prompt: 'Optional: What is one real problem you wish you could build a project to solve?',
+      type: 'text',
+      required: false,
+      maxLength: 200,
+    },
+  ],
+};
+
+const FALLBACK_SURVEYS: Record<string, SurveyDefinition> = {
+  'sparkintel-project-discovery': DEFAULT_PROJECT_SURVEY,
+  'secondary-discovery-2026': DEFAULT_SECONDARY_SURVEY,
+};
+
 function StudentSurveyContent() {
   const searchParams = useSearchParams();
-  const slug = searchParams.get('slug') || 'secondary-discovery-2026';
+  const initialSlug = searchParams.get('slug') || 'sparkintel-project-discovery';
+  const [activeSlug, setActiveSlug] = useState(initialSlug);
 
-  const [survey, setSurvey] = useState<SurveyDefinition>(DEFAULT_SECONDARY_SURVEY);
+  const [survey, setSurvey] = useState<SurveyDefinition>(
+    FALLBACK_SURVEYS[initialSlug] ?? DEFAULT_PROJECT_SURVEY,
+  );
   const [answers, setAnswers] = useState<Record<string, string | string[]>>({});
   const [busy, setBusy] = useState(false);
+  const [statusNote, setStatusNote] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    fetch(`${API_URL}/v1/learning/surveys/${encodeURIComponent(slug)}`)
+    setSurvey(FALLBACK_SURVEYS[activeSlug] ?? DEFAULT_PROJECT_SURVEY);
+    setAnswers({});
+    setSubmitted(false);
+    setError('');
+    fetch(`${API_URL}/v1/learning/surveys/${encodeURIComponent(activeSlug)}`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data && Array.isArray((data as SurveyDefinition).questions)) {
@@ -133,7 +235,7 @@ function StudentSurveyContent() {
         }
       })
       .catch(() => null);
-  }, [slug]);
+  }, [activeSlug]);
 
   function selectSingle(questionId: string, option: string) {
     setAnswers((prev) => ({ ...prev, [questionId]: option }));
@@ -168,19 +270,39 @@ function StudentSurveyContent() {
     }
     setBusy(true);
     setError('');
-    try {
-      const res = await fetch(`${API_URL}/v1/learning/surveys/${encodeURIComponent(survey.slug)}/responses`, {
+    setStatusNote('');
+    const endpoint = `${API_URL}/v1/learning/surveys/${encodeURIComponent(survey.slug)}/responses`;
+    const body = JSON.stringify({ answers });
+
+    const attemptPost = () =>
+      fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ answers }),
+        body,
       });
-      if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as { message?: string } | null;
-        throw new Error(body?.message ?? 'Could not submit your response. Please try again.');
+
+    try {
+      let res: Response;
+      try {
+        res = await attemptPost();
+      } catch {
+        setStatusNote('Waking up the server—retrying automatically…');
+        await new Promise((r) => setTimeout(r, 3500));
+        res = await attemptPost();
       }
+      if (!res.ok) {
+        const resBody = (await res.json().catch(() => null)) as { message?: string } | null;
+        throw new Error(resBody?.message ?? 'Could not submit your response. Please try again.');
+      }
+      setStatusNote('');
       setSubmitted(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not submit right now.');
+      setStatusNote('');
+      setError(
+        err instanceof Error && err.message !== 'Failed to fetch'
+          ? err.message
+          : 'The server is waking up or temporarily unreachable. Please tap Submit once more.',
+      );
     } finally {
       setBusy(false);
     }
@@ -191,12 +313,31 @@ function StudentSurveyContent() {
       <div className="mx-auto max-w-2xl space-y-6">
         <Card className="overflow-hidden border-slate-200/90 shadow-md">
           <div className="h-1.5 bg-gradient-to-r from-spark-600 via-cyan-500 to-emerald-500" />
-          <CardHeader className="space-y-2">
+          <CardHeader className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <Badge variant="success">
                 <ShieldCheck className="mr-1 h-3.5 w-3.5" /> Anonymous · Zero Personal Info
               </Badge>
               <span className="text-xs font-semibold text-slate-500">Under 1 minute</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { slug: 'sparkintel-project-discovery', label: 'SparkIntel Project Survey' },
+                { slug: 'secondary-discovery-2026', label: 'Device & Tech Readiness' },
+              ].map((opt) => (
+                <button
+                  key={opt.slug}
+                  type="button"
+                  onClick={() => setActiveSlug(opt.slug)}
+                  className={`rounded-xl border px-3 py-1.5 text-xs font-bold transition ${
+                    activeSlug === opt.slug
+                      ? 'border-spark-600 bg-spark-600 text-white'
+                      : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
             </div>
             <CardTitle className="text-2xl font-extrabold text-slate-900">{survey.title}</CardTitle>
             <CardDescription className="text-sm leading-relaxed text-slate-600">
@@ -235,6 +376,11 @@ function StudentSurveyContent() {
               </div>
             ) : (
               <form className="space-y-6" onSubmit={(e) => void handleSubmit(e)}>
+                {statusNote && (
+                  <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-medium text-amber-900">
+                    {statusNote}
+                  </p>
+                )}
                 {error && (
                   <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs font-medium text-red-800">
                     {error}

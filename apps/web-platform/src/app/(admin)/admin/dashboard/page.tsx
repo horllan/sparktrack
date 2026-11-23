@@ -369,7 +369,7 @@ export default function AdminDashboardPage() {
         };
         setOrganisations(inst.organisations ?? []);
       }
-      const survRes = await fetch(`${API_URL}/v1/learning/surveys/secondary-discovery-2026/analytics`, {
+      const survRes = await fetch(`${API_URL}/v1/learning/surveys/sparkintel-project-discovery/analytics`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (survRes.ok) {
