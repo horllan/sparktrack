@@ -178,6 +178,8 @@ export default function AdminDashboardPage() {
   const [health, setHealth] = useState<HealthTelemetry | null>(null);
   const [apiKeys, setApiKeys] = useState<PartnerApiKey[]>([]);
   const [apiKeyLabel, setApiKeyLabel] = useState('');
+  const [apiKeyOrgId, setApiKeyOrgId] = useState('');
+  const [organisations, setOrganisations] = useState<Array<{ id: string; name: string; orgType: string }>>([]);
   const [newlyIssuedApiKey, setNewlyIssuedApiKey] = useState<string | null>(null);
   const [governance, setGovernance] = useState<DataGovernanceOverview | null>(null);
   const [scanInput, setScanInput] = useState(
@@ -319,11 +321,20 @@ export default function AdminDashboardPage() {
     try {
       const token = await getToken();
       if (!token) return;
-      const res = await fetch(`${API_URL}/v1/auth/api-keys`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        setApiKeys((await res.json()) as PartnerApiKey[]);
+      const [keysRes, instRes] = await Promise.all([
+        fetch(`${API_URL}/v1/auth/api-keys`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch(`${API_URL}/v1/learning/institutions/analytics`),
+      ]);
+      if (keysRes.ok) {
+        setApiKeys((await keysRes.json()) as PartnerApiKey[]);
+      }
+      if (instRes.ok) {
+        const inst = (await instRes.json()) as {
+          organisations?: Array<{ id: string; name: string; orgType: string }>;
+        };
+        setOrganisations(inst.organisations ?? []);
       }
     } catch {
       // Non-fatal
@@ -410,6 +421,7 @@ export default function AdminDashboardPage() {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           label: apiKeyLabel.trim(),
+          ...(apiKeyOrgId ? { organisationId: apiKeyOrgId } : {}),
           scopes: ['intelligence:read', 'evidence:write', 'portfolio:verify'],
           rateLimitPerMinute: 120,
         }),
@@ -1148,13 +1160,21 @@ export default function AdminDashboardPage() {
                     Create Invitation Code
                   </Button>
                   {issuedToken && (
-                    <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 p-3 text-xs text-emerald-950">
+                    <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 p-3 text-xs text-emerald-950 space-y-1.5">
                       <p className="font-bold">Invitation Code (valid for 7 days):</p>
-                      <code className="mt-1 block break-all rounded bg-white p-2 font-mono text-[11px] font-semibold text-slate-900">
+                      <code className="block break-all rounded bg-white p-2 font-mono text-[11px] font-semibold text-slate-900">
                         {issuedToken}
                       </code>
-                      <p className="mt-1.5 text-[11px] text-emerald-800">
-                        Share this code with the recipient to use when registering their account.
+                      <p className="text-[11px] text-emerald-900">
+                        Direct registration link:{' '}
+                        <a
+                          href={`/auth?mode=signup&role=${encodeURIComponent(inviteRole)}&invite=${encodeURIComponent(issuedToken)}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-bold underline"
+                        >
+                          /auth?mode=signup&amp;role={inviteRole}&amp;invite=… ↗
+                        </a>
                       </p>
                     </div>
                   )}
@@ -1471,6 +1491,21 @@ export default function AdminDashboardPage() {
                     placeholder="Partner key label (e.g., Lagos Maker Hub Integration)"
                     className="flex-1"
                   />
+                  {organisations.length > 0 && (
+                    <select
+                      value={apiKeyOrgId}
+                      onChange={(e) => setApiKeyOrgId(e.target.value)}
+                      aria-label="Bind API key to organisation"
+                      className="h-11 rounded-xl border border-slate-200 bg-slate-50/70 px-3 text-xs font-medium text-slate-900"
+                    >
+                      <option value="">Select Organisation (recommended)</option>
+                      {organisations.map((org) => (
+                        <option key={org.id} value={org.id}>
+                          {org.name} ({org.orgType})
+                        </option>
+                      ))}
+                    </select>
+                  )}
                   <Button disabled={busy || !apiKeyLabel.trim()} onClick={() => void handleIssueApiKey()}>
                     Create Access Key
                   </Button>

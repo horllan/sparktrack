@@ -556,13 +556,18 @@ export class AuthPlatformService {
     user: AuthUser,
     payload: {
       label: string;
+      organisationId?: string;
       scopes: string[];
       rateLimitPerMinute: number;
       expiresInDays?: number;
     },
   ) {
+    const boundOrgId =
+      user.role === 'SUPER_ADMIN' && payload.organisationId
+        ? payload.organisationId
+        : user.organisationId;
     const issued = await apiKeyQueries.issueKey(this.db, {
-      organisationId: user.organisationId,
+      organisationId: boundOrgId,
       createdBy: user.id,
       label: payload.label,
       scopes: payload.scopes,

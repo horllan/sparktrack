@@ -67,6 +67,7 @@ const RegisterChildrenBulkSchema = z.object({
 
 const IssueApiKeySchema = z.object({
   label: z.string().min(2).max(120),
+  organisationId: z.string().uuid().optional(),
   scopes: z
     .array(z.enum(['intelligence:read', 'evidence:write', 'portfolio:verify', 'analytics:read']))
     .min(1)

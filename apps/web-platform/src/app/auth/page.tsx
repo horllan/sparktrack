@@ -96,7 +96,9 @@ function AuthHubContent() {
   const [fullName, setFullName] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [organisationName, setOrganisationName] = useState('');
-  const [organisationType, setOrganisationType] = useState<'SCHOOL' | 'NGO' | 'TRAINING_PROVIDER'>('SCHOOL');
+  const [organisationType, setOrganisationType] = useState<
+    'SCHOOL' | 'NGO' | 'TRAINING_PROVIDER' | 'EMPLOYER' | 'GOVERNMENT'
+  >('SCHOOL');
   const [invitationToken, setInvitationToken] = useState('');
 
   const [busy, setBusy] = useState(false);
@@ -105,13 +107,15 @@ function AuthHubContent() {
 
   useEffect(() => {
     const modeParam = searchParams.get('mode');
-    const roleParam = searchParams.get('role') as PublicRole | null;
+    const roleParam = searchParams.get('role');
     const inviteParam = searchParams.get('invite');
     if (modeParam === 'signin' || modeParam === 'signup') {
       setMode(modeParam);
     }
-    if (roleParam && ROLE_OPTIONS.some((r) => r.id === roleParam)) {
-      setSelectedRole(roleParam);
+    if (roleParam === 'ORG_PARTNER') {
+      setSelectedRole('SCHOOL_ADMIN');
+    } else if (roleParam && ROLE_OPTIONS.some((r) => r.id === roleParam)) {
+      setSelectedRole(roleParam as PublicRole);
     }
     if (inviteParam) {
       setInvitationToken(inviteParam);
@@ -164,6 +168,14 @@ function AuthHubContent() {
       if (mode === 'signup') {
         const isParent = selectedRole === 'PARENT';
         const endpoint = isParent ? `${API_URL}/v1/auth/register-role` : `${API_URL}/v1/auth/accept-invitation`;
+        const trimmedToken = invitationToken.trim();
+        const tokenParts = trimmedToken.split('.');
+        const tokenScopedRole =
+          tokenParts.length === 4 &&
+          tokenParts[0] === 'SPK-INV' &&
+          (tokenParts[1] === 'SCHOOL_ADMIN' || tokenParts[1] === 'ORG_PARTNER' || tokenParts[1] === 'MENTOR')
+            ? tokenParts[1]
+            : selectedRole;
         const regRes = await fetch(endpoint, {
           method: 'POST',
           headers: {
@@ -179,12 +191,13 @@ function AuthHubContent() {
                   ...(phoneNumber.trim() ? { phoneNumber: phoneNumber.trim() } : {}),
                 }
               : {
-                  invitationToken: invitationToken.trim(),
-                  role: selectedRole,
+                  invitationToken: trimmedToken,
+                  role: tokenScopedRole,
                   fullName: fullName.trim(),
                   email: email.trim(),
                   ...(phoneNumber.trim() ? { phoneNumber: phoneNumber.trim() } : {}),
-                  ...(selectedRole === 'SCHOOL_ADMIN' && organisationName.trim()
+                  ...((tokenScopedRole === 'SCHOOL_ADMIN' || tokenScopedRole === 'ORG_PARTNER') &&
+                  organisationName.trim()
                     ? {
                         organisationName: organisationName.trim(),
                         organisationType,
@@ -449,6 +462,8 @@ function AuthHubContent() {
                               <option value="SCHOOL">Secondary / Junior School</option>
                               <option value="NGO">NGO / Youth Foundation</option>
                               <option value="TRAINING_PROVIDER">STEM / Training Hub</option>
+                              <option value="EMPLOYER">Employer / Industry Partner</option>
+                              <option value="GOVERNMENT">Government Agency</option>
                             </select>
                           </div>
                         </div>
