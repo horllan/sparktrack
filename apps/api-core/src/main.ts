@@ -19,9 +19,21 @@ async function bootstrap() {
   // Global prefix for all routes
   app.setGlobalPrefix('api');
 
-  // Enable CORS for the web platform
+  // Enable CORS for the web platform (normalize trailing slashes & support comma-separated origins)
+  const allowedOrigins = (process.env.CORS_ORIGIN ?? 'http://localhost:3000')
+    .split(',')
+    .map((o) => o.trim().replace(/\/+$/, ''))
+    .filter(Boolean);
+
   app.enableCors({
-    origin: process.env.CORS_ORIGIN ?? 'http://localhost:3000',
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      const normalized = origin.replace(/\/+$/, '');
+      if (allowedOrigins.includes(normalized) || allowedOrigins.includes('*')) {
+        return callback(null, true);
+      }
+      return callback(new Error(`Origin ${origin} not allowed by CORS`), false);
+    },
     credentials: true,
   });
 
