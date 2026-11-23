@@ -3251,3 +3251,126 @@ export const partnerQueries = {
     });
   },
 };
+
+export interface SurveyQuestion {
+  id: string;
+  prompt: string;
+  type: 'single' | 'multi' | 'text';
+  required: boolean;
+  options?: string[];
+  maxSelect?: number;
+  maxLength?: number;
+}
+
+export const surveyQueries = {
+  async getBySlug(db: Db, slug: string) {
+    const r = await sql<{
+      id: string;
+      slug: string;
+      title: string;
+      description: string;
+      target_audience: string;
+      questions: SurveyQuestion[];
+      is_active: boolean;
+    }>`
+      SELECT id, slug, title, description, target_audience, questions, is_active
+      FROM analytics.surveys
+      WHERE slug = ${slug} AND is_active = TRUE
+      LIMIT 1
+    `.execute(db);
+    const row = r.rows[0];
+    if (!row) return null;
+    return {
+      id: row.id,
+      slug: row.slug,
+      title: row.title,
+      description: row.description,
+      targetAudience: row.target_audience,
+      questions: row.questions,
+    };
+  },
+
+  async submitResponse(db: Db, slug: string, answers: Record<string, string | string[]>) {
+    const survey = await this.getBySlug(db, slug);
+    if (!survey) return null;
+
+    // Strip any accidental PII (phone numbers, emails, 11-digit IDs) from free-text answers.
+    const sanitizedAnswers: Record<string, string | string[]> = {};
+    for (const q of survey.questions) {
+      const val = answers[q.id];
+      if (val === undefined) continue;
+      if (q.type === 'text' && typeof val === 'string') {
+        sanitizedAnswers[q.id] = discoverAndRedactPii(val.trim().slice(0, q.maxLength ?? 200)).sanitizedText;
+      } else if (q.type === 'multi' && Array.isArray(val)) {
+        const allowed = new Set(q.options ?? []);
+        sanitizedAnswers[q.id] = val.filter((v) => allowed.has(v)).slice(0, q.maxSelect ?? 3);
+      } else if (q.type === 'single' && typeof val === 'string') {
+        const allowed = new Set(q.options ?? []);
+        if (allowed.has(val)) sanitizedAnswers[q.id] = val;
+      }
+    }
+
+    const r = await sql<{ id: string; submitted_at: Date }>`
+      INSERT INTO analytics.survey_responses (survey_id, answers)
+      VALUES (${survey.id}::uuid, ${JSON.stringify(sanitizedAnswers)}::jsonb)
+      RETURNING id, submitted_at
+    `.execute(db);
+
+    return {
+      responseId: r.rows[0]!.id,
+      surveySlug: survey.slug,
+      submittedAt: r.rows[0]!.submitted_at.toISOString(),
+    };
+  },
+
+  async analytics(db: Db, slug: string) {
+    const survey = await this.getBySlug(db, slug);
+    if (!survey) return null;
+
+    const r = await sql<{ answers: Record<string, string | string[]>; submitted_at: Date }>`
+      SELECT answers, submitted_at
+      FROM analytics.survey_responses
+      WHERE survey_id = ${survey.id}::uuid
+      ORDER BY submitted_at DESC
+      LIMIT 1000
+    `.execute(db);
+
+    const totalResponses = r.rows.length;
+    const questionStats = survey.questions
+      .filter((q) => q.type !== 'text')
+      .map((q) => {
+        const counts = new Map<string, number>();
+        for (const opt of q.options ?? []) counts.set(opt, 0);
+        for (const row of r.rows) {
+          const val = row.answers[q.id];
+          if (Array.isArray(val)) {
+            for (const item of val) counts.set(item, (counts.get(item) ?? 0) + 1);
+          } else if (typeof val === 'string' && counts.has(val)) {
+            counts.set(val, (counts.get(val) ?? 0) + 1);
+          }
+        }
+        return {
+          id: q.id,
+          prompt: q.prompt,
+          breakdown: Array.from(counts.entries()).map(([option, count]) => ({
+            option,
+            count,
+            pct: totalResponses > 0 ? Math.round((count / totalResponses) * 100) : 0,
+          })),
+        };
+      });
+
+    const recentIdeas = r.rows
+      .map((row) => row.answers.one_project_wish)
+      .filter((v): v is string => typeof v === 'string' && v.trim().length > 0)
+      .slice(0, 12);
+
+    return {
+      slug: survey.slug,
+      title: survey.title,
+      totalResponses,
+      questionStats,
+      recentIdeas,
+    };
+  },
+};

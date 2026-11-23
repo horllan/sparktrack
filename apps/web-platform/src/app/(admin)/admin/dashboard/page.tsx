@@ -18,6 +18,7 @@ import {
   Input,
 } from '@sparktrack/ui';
 import { createClient } from '../../../../lib/supabase/client';
+import { AnimatedTelemetryBars } from '../../../../components/charts/capability-charts';
 
 const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
 const API_URL = configuredApiUrl && !(process.env.NODE_ENV === 'production' && /localhost|127\.0\.0\.1/i.test(configuredApiUrl))
@@ -202,6 +203,16 @@ export default function AdminDashboardPage() {
   const [apiKeyOrgId, setApiKeyOrgId] = useState('');
   const [organisations, setOrganisations] = useState<Array<{ id: string; name: string; orgType: string }>>([]);
   const [newlyIssuedApiKey, setNewlyIssuedApiKey] = useState<string | null>(null);
+  const [surveyStats, setSurveyStats] = useState<{
+    slug: string;
+    title: string;
+    totalResponses: number;
+    questionStats: Array<{
+      id: string;
+      prompt: string;
+      breakdown: Array<{ option: string; count: number; pct: number }>;
+    }>;
+  } | null>(null);
   const [governance, setGovernance] = useState<DataGovernanceOverview | null>(null);
   const [scanInput, setScanInput] = useState(
     'Student project submitted by Tobi. Reach guardian at +234 803 555 0199 or parent@example.org (NIN 12345678901).',
@@ -357,6 +368,12 @@ export default function AdminDashboardPage() {
           organisations?: Array<{ id: string; name: string; orgType: string }>;
         };
         setOrganisations(inst.organisations ?? []);
+      }
+      const survRes = await fetch(`${API_URL}/v1/learning/surveys/secondary-discovery-2026/analytics`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (survRes.ok) {
+        setSurveyStats((await survRes.json()) as typeof surveyStats);
       }
     } catch {
       // Non-fatal
@@ -1593,6 +1610,59 @@ export default function AdminDashboardPage() {
                             Revoke
                           </Button>
                         )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* ANONYMOUS SECONDARY SCHOOL STUDENT SURVEY ANALYTICS */}
+            <Card>
+              <CardHeader>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <CardTitle className="text-base">
+                      Secondary School Student Survey ({surveyStats?.totalResponses ?? 0} Responses)
+                    </CardTitle>
+                    <CardDescription>
+                      Share <code className="font-mono">/survey</code> with JSS1–SS3 students—anonymous, zero personal
+                      data collected.
+                    </CardDescription>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <a
+                      href="/survey"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex h-8 items-center rounded-lg border border-spark-200 bg-spark-50 px-3 text-xs font-bold text-spark-800 hover:bg-spark-100"
+                    >
+                      Open Survey Form ↗
+                    </a>
+                    <Button size="sm" variant="outline" onClick={() => void loadApiKeys()}>
+                      Refresh Results
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {!surveyStats || surveyStats.totalResponses === 0 ? (
+                  <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 p-4 text-xs text-slate-500">
+                    No responses recorded yet. Share <code className="font-mono">/survey</code> with students in your
+                    session to see live interest and device readiness charts here.
+                  </p>
+                ) : (
+                  <div className="grid gap-5 md:grid-cols-2">
+                    {surveyStats.questionStats.slice(0, 4).map((q) => (
+                      <div key={q.id} className="space-y-2 rounded-2xl border border-slate-200/80 bg-white p-4">
+                        <p className="text-xs font-bold text-slate-900">{q.prompt}</p>
+                        <AnimatedTelemetryBars
+                          items={q.breakdown.map((b) => ({
+                            label: b.option,
+                            value: b.pct,
+                            badge: `${b.count}`,
+                          }))}
+                        />
                       </div>
                     ))}
                   </div>

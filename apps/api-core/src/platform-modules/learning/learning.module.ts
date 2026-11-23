@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, ForbiddenException, Get, HttpException, HttpStatus, Inject, Module, NotFoundException, Param, ParseUUIDPipe, Patch, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { institutionQueries, learningQueries, ledgerQueries, telemetryQueries, type SparkTrackDatabase } from '@sparktrack/db';
+import { institutionQueries, learningQueries, ledgerQueries, surveyQueries, telemetryQueries, type SparkTrackDatabase } from '@sparktrack/db';
 import type { Kysely } from 'kysely';
 import { z } from 'zod';
 import { CurrentUser, LearnerAccessService, Public, Roles, type AuthUser } from '../../common/auth/auth.guard';
@@ -257,6 +257,40 @@ class LearningController {
     const parsed = PresignUploadSchema.parse(body);
     await this.access.assertCanAccess(user, parsed.learnerId);
     return this.r2.presignUpload(parsed);
+  }
+
+  @Public()
+  @Get('surveys/:slug')
+  @ApiOperation({ summary: 'Fetch an active anonymous student survey definition by slug' })
+  async getSurvey(@Param('slug') slug: string) {
+    const survey = await surveyQueries.getBySlug(this.db, slug.trim().toLowerCase());
+    if (!survey) throw new NotFoundException('Survey not found or inactive.');
+    return survey;
+  }
+
+  @Public()
+  @Post('surveys/:slug/responses')
+  @ApiOperation({ summary: 'Submit an anonymous student survey response (zero PII stored)' })
+  async submitSurveyResponse(@Param('slug') slug: string, @Body() body: unknown) {
+    const cleanSlug = slug.trim().toLowerCase();
+    const rate = await this.cache.checkRateLimit(`sparktrack:rl:survey:${cleanSlug}`, 120, 60);
+    if (!rate.allowed) {
+      throw new HttpException('Too many survey submissions right now. Please try again in a moment.', HttpStatus.TOO_MANY_REQUESTS);
+    }
+    const parsed = z.object({ answers: z.record(z.string(), z.union([z.string(), z.array(z.string())])) }).parse(body);
+    const saved = await surveyQueries.submitResponse(this.db, cleanSlug, parsed.answers);
+    if (!saved) throw new NotFoundException('Survey not found or inactive.');
+    return saved;
+  }
+
+  @ApiBearerAuth()
+  @Get('surveys/:slug/analytics')
+  @Roles('SCHOOL_ADMIN', 'ORG_PARTNER', 'SUPER_ADMIN')
+  @ApiOperation({ summary: 'Aggregate anonymous student survey results for School/Program Admins' })
+  async getSurveyAnalytics(@Param('slug') slug: string) {
+    const stats = await surveyQueries.analytics(this.db, slug.trim().toLowerCase());
+    if (!stats) throw new NotFoundException('Survey not found.');
+    return stats;
   }
 }
 
