@@ -19,17 +19,22 @@ async function bootstrap() {
   // Global prefix for all routes
   app.setGlobalPrefix('api');
 
-  // Enable CORS for the web platform (normalize trailing slashes & support comma-separated origins)
+  // Enable CORS for the web platform (normalize trailing slashes, support comma-separated origins & SparkTrack Vercel deploys)
   const allowedOrigins = (process.env.CORS_ORIGIN ?? 'http://localhost:3000')
     .split(',')
     .map((o) => o.trim().replace(/\/+$/, ''))
     .filter(Boolean);
+  const sparktrackVercelOrigin = /^https:\/\/sparktrack(?:-[a-z0-9-]+)?\.vercel\.app$/i;
 
   app.enableCors({
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);
       const normalized = origin.replace(/\/+$/, '');
-      if (allowedOrigins.includes(normalized) || allowedOrigins.includes('*')) {
+      if (
+        allowedOrigins.includes(normalized) ||
+        allowedOrigins.includes('*') ||
+        sparktrackVercelOrigin.test(normalized)
+      ) {
         return callback(null, true);
       }
       return callback(new Error(`Origin ${origin} not allowed by CORS`), false);
