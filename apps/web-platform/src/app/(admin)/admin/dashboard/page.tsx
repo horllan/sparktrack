@@ -19,7 +19,12 @@ import {
 } from '@sparktrack/ui';
 import { createClient } from '../../../../lib/supabase/client';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
+const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
+const API_URL = configuredApiUrl && !(process.env.NODE_ENV === 'production' && /localhost|127\.0\.0\.1/i.test(configuredApiUrl))
+  ? configuredApiUrl
+  : process.env.NODE_ENV === 'production'
+    ? 'https://api.sparktrack.africa/api'
+    : 'http://localhost:4000/api';
 const DEMO_LEARNER_ID = '11111111-1111-4111-8111-111111111113';
 const DEMO_MENTOR_ID = '11111111-1111-4111-8111-000000000020';
 
@@ -98,9 +103,7 @@ interface HealthTelemetry {
   stage?: string;
   database: string;
   redis: string;
-  redisLatencyMs: number | null;
-  r2Storage?: string;
-  ledgerBlocks: number;
+  ledgerBlockCount: number;
   ledgerIntegrityValid: boolean;
   timestamp: string;
 }
@@ -165,10 +168,28 @@ interface DataGovernanceOverview {
   }>;
 }
 
-type AdminTab = 'cohorts' | 'enrolment' | 'partners' | 'graph' | 'tickets' | 'staging';
+type AdminTab = 'overview' | 'cohorts' | 'enrolment' | 'partners' | 'graph' | 'tickets' | 'staging';
+
+function dateAfterDays(days: number) {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+async function readResponse<T>(response: Response): Promise<T & { message?: string | string[] }> {
+  const text = await response.text();
+  if (!text) return {} as T & { message?: string | string[] };
+  try { return JSON.parse(text) as T & { message?: string | string[] }; }
+  catch { return { message: text.slice(0, 240) } as T & { message?: string | string[] }; }
+}
+
+function apiError(body: { message?: string | string[] }, fallback: string, status: number) {
+  const message = Array.isArray(body.message) ? body.message.join(', ') : body.message;
+  return new Error(message || `${fallback} (HTTP ${status}).`);
+}
 
 export default function AdminDashboardPage() {
-  const [activeTab, setActiveTab] = useState<AdminTab>('cohorts');
+  const [activeTab, setActiveTab] = useState<AdminTab>('overview');
   const [nodeFilter, setNodeFilter] = useState<string>('ALL');
 
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
@@ -205,8 +226,9 @@ export default function AdminDashboardPage() {
   const [programmeType, setProgrammeType] = useState<
     'HOLIDAY_CAMP' | 'SCHOOL_TERM_COCURRICULAR' | 'WEEKEND_WORKSHOP' | 'ONLINE_COHORT'
   >('HOLIDAY_CAMP');
-  const [startDate, setStartDate] = useState('2026-11-01');
-  const [endDate, setEndDate] = useState('2026-12-15');
+  const [startDate, setStartDate] = useState(() => dateAfterDays(7));
+  const [endDate, setEndDate] = useState(() => dateAfterDays(37));
+  const [cohortOrganisationId, setCohortOrganisationId] = useState('');
   const [maxCapacity, setMaxCapacity] = useState('30');
   const [priceNgn, setPriceNgn] = useState('0');
 
@@ -537,10 +559,11 @@ export default function AdminDashboardPage() {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ name: orgName.trim(), orgType }),
       });
-      const body = (await res.json()) as { organisationId?: string; message?: string };
-      if (!res.ok) throw new Error(body.message ?? 'Failed to create organisation.');
+      const body = await readResponse<{ organisationId?: string }>(res);
+      if (!res.ok) throw apiError(body, 'Failed to register organisation', res.status);
       setNotice(`Registered partner organisation (${body.organisationId}).`);
       setOrgName('');
+      await loadApiKeys();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not create organisation.');
     } finally {
@@ -559,6 +582,7 @@ export default function AdminDashboardPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
+          ...(cohortOrganisationId ? { organisationId: cohortOrganisationId } : {}),
           title: cohortTitle.trim(),
           programmeType,
           startDate,
@@ -567,8 +591,8 @@ export default function AdminDashboardPage() {
           priceNgn: Number(priceNgn) || 0,
         }),
       });
-      const body = (await res.json()) as { cohortId?: string; message?: string };
-      if (!res.ok) throw new Error(body.message ?? 'Failed to create cohort.');
+      const body = await readResponse<{ cohortId?: string }>(res);
+      if (!res.ok) throw apiError(body, 'Failed to create cohort', res.status);
       setNotice(`Created programme cohort (${body.cohortId}).`);
       setCohortTitle('');
       await loadCohorts();
@@ -735,10 +759,28 @@ export default function AdminDashboardPage() {
     : [];
 
   return (
-    <main className="min-h-screen px-4 py-8 sm:px-6 lg:px-10">
+    <main className="min-h-screen bg-[#f4f5f9] text-slate-900 lg:flex">
+      <aside className="flex w-full shrink-0 flex-col bg-[#35149a] text-white lg:fixed lg:inset-y-0 lg:w-60">
+        <a href="/admin/dashboard" className="flex h-[76px] items-center gap-3 border-b border-white/10 px-6 text-lg font-extrabold"><span className="grid h-9 w-9 place-items-center rounded-xl bg-white text-xl font-black text-[#35149a]">S</span>SparkTrack <span className="text-xs font-medium text-violet-200">ADMIN</span></a>
+        <p className="px-6 pb-2 pt-6 text-[10px] font-bold uppercase tracking-[.2em] text-violet-300">Workspace</p>
+        <nav className="grid grid-cols-2 gap-1 px-3 pb-4 sm:grid-cols-3 lg:flex lg:flex-col" aria-label="Admin navigation">
+          {([
+            ['overview', 'Overview', Sparkles], ['cohorts', `Cohorts · ${cohorts.length}`, CalendarRange], ['partners', 'Schools & partners', Building2], ['enrolment', 'Enrolment & mentors', UserPlus], ['graph', 'Skills catalogue', Network], ['tickets', `Support · ${tickets.length}`, MessageSquare], ['staging', 'System status', Sparkles],
+          ] as const).map(([tab, label, Icon]) => <button key={tab} type="button" onClick={() => { setActiveTab(tab); if (tab === 'tickets') void loadTickets(); if (tab === 'staging') void loadHealth(); }} className={`flex items-center gap-3 rounded-xl px-3.5 py-3 text-left text-xs font-semibold transition ${activeTab === tab ? 'bg-white text-[#35149a] shadow-md' : 'text-violet-100 hover:bg-white/10 hover:text-white'}`}><Icon className="h-4 w-4 shrink-0"/><span>{label}</span></button>)}
+        </nav>
+        <div className="mt-auto hidden border-t border-white/10 p-4 lg:block"><div className="rounded-2xl bg-white/10 p-3.5"><p className="text-xs font-bold">SparkTrack Operations</p><p className="mt-1 text-[11px] text-violet-200">Programmes, schools and learner support.</p></div></div>
+      </aside>
+      <div className="min-w-0 flex-1 px-4 py-5 sm:px-6 lg:ml-60 lg:px-9 lg:py-7">
       <div className="mx-auto max-w-7xl space-y-7">
+        <header className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200/80 bg-white px-5 py-4 shadow-sm"><div><p className="text-[11px] font-semibold uppercase tracking-[.14em] text-slate-400">SparkTrack / Administration</p><h1 className="mt-1 text-xl font-extrabold">{activeTab === 'overview' ? 'Good to see you, Admin' : activeTab === 'partners' ? 'Schools & partners' : activeTab === 'cohorts' ? 'Programme cohorts' : activeTab === 'enrolment' ? 'Enrolment & mentors' : activeTab === 'tickets' ? 'Support queue' : activeTab === 'graph' ? 'Skills catalogue' : 'System status'}</h1></div><div className="flex items-center gap-3"><Badge variant={operatorRole === 'SUPER_ADMIN' ? 'success' : 'warning'}>{operatorRole === 'SUPER_ADMIN' ? 'Admin active' : 'View only'}</Badge><a href="/internal/admin-access" className="inline-flex h-10 items-center rounded-xl bg-[#35149a] px-4 text-xs font-bold text-white">{operatorRole === 'SUPER_ADMIN' ? 'Staff sign in' : 'Admin sign in'}</a></div></header>
+        {activeTab === 'overview' && <section className="space-y-5" aria-label="Admin overview">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{[
+            { label: 'Programme cohorts', value: cohorts.length, note: 'Across all programme types', tone: 'bg-[#5436e8]' }, { label: 'Partner organisations', value: organisations.length, note: 'Schools and delivery partners', tone: 'bg-[#32a9ef]' }, { label: 'Registered accounts', value: accounts.length, note: 'Staff, mentors and schools', tone: 'bg-[#12c98b]' }, { label: 'Open support tickets', value: tickets.filter((ticket) => ticket.status !== 'RESOLVED').length, note: 'Awaiting operations review', tone: 'bg-[#8bc83f]' },
+          ].map((metric) => <div key={metric.label} className={`${metric.tone} rounded-2xl p-5 text-white shadow-sm`}><p className="text-xs font-semibold text-white/80">{metric.label}</p><p className="mt-2 text-3xl font-extrabold">{metric.value}</p><p className="mt-1 text-[11px] text-white/75">{metric.note}</p></div>)}</div>
+          <div className="grid gap-5 xl:grid-cols-[1.35fr_.85fr]"><Card><CardHeader><CardTitle className="text-base">Programme activity</CardTitle><CardDescription>Cohort capacity across your programmes.</CardDescription></CardHeader><CardContent className="space-y-4">{cohorts.length === 0 ? <p className="rounded-xl bg-slate-50 p-5 text-sm text-slate-500">No cohorts yet. Create your first programme to get started.</p> : cohorts.slice(0, 5).map((cohort) => <div key={cohort.id} className="space-y-2"><div className="flex justify-between gap-3 text-xs"><span className="truncate font-bold">{cohort.title}</span><span>{cohort.currentEnrolmentCount}/{cohort.maxCapacity}</span></div><div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-[#5436e8]" style={{ width: `${Math.min(100, Math.round((cohort.currentEnrolmentCount / Math.max(cohort.maxCapacity, 1)) * 100))}%` }}/></div></div>)}<button onClick={() => setActiveTab('cohorts')} className="text-xs font-bold text-[#5436e8]">Manage cohorts →</button></CardContent></Card><Card><CardHeader><CardTitle className="text-base">Quick actions</CardTitle><CardDescription>Common programme operations.</CardDescription></CardHeader><CardContent className="grid gap-2.5"><button onClick={() => setActiveTab('cohorts')} className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-left text-xs font-bold hover:bg-violet-50"><CalendarRange className="h-4 w-4 text-[#5436e8]"/>Create a cohort</button><button onClick={() => setActiveTab('partners')} className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-left text-xs font-bold hover:bg-violet-50"><Building2 className="h-4 w-4 text-[#5436e8]"/>Register a school</button><button onClick={() => setActiveTab('partners')} className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-left text-xs font-bold hover:bg-violet-50"><UserPlus className="h-4 w-4 text-[#5436e8]"/>Invite a school administrator</button></CardContent></Card></div>
+        </section>}
         {/* Hero Header */}
-        <div className="spark-enter flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-slate-200/80 bg-white/90 p-6 shadow-[0_18px_45px_-28px_rgba(15,23,42,0.28)] backdrop-blur sm:p-8">
+        <div className="hidden">
           <div className="space-y-2">
             <div className="inline-flex items-center gap-2 rounded-full border border-spark-200 bg-spark-50 px-3 py-1 text-xs font-semibold text-spark-700">
               <Sparkles className="h-3.5 w-3.5" />
@@ -767,7 +809,7 @@ export default function AdminDashboardPage() {
         </div>
 
         {/* Segmented Workflow Switcher */}
-        <div className="flex flex-wrap gap-2 rounded-2xl border border-slate-200/80 bg-white/80 p-1.5 shadow-sm">
+        <div className="hidden">
           <button
             type="button"
             onClick={() => setActiveTab('cohorts')}
@@ -896,6 +938,10 @@ export default function AdminDashboardPage() {
                     placeholder="Max Capacity"
                   />
                 </div>
+                <select value={cohortOrganisationId} onChange={(e) => setCohortOrganisationId(e.target.value)} className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 text-sm text-slate-900">
+                  <option value="">Independent programme (no organisation)</option>
+                  {organisations.map((org) => <option key={org.id} value={org.id}>{org.name} · {org.orgType.replace(/_/g, ' ')}</option>)}
+                </select>
                 <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
                   <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
                   <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
@@ -1183,6 +1229,11 @@ export default function AdminDashboardPage() {
             </div>
 
             <Card>
+              <CardHeader><CardTitle className="text-base">Registered schools &amp; partners ({organisations.length})</CardTitle><CardDescription>These organisations can be linked to new cohorts.</CardDescription></CardHeader>
+              <CardContent>{organisations.length === 0 ? <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">No partner organisations yet. Register a school above to add it to SparkTrack.</p> : <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{organisations.map((org) => <div key={org.id} className="rounded-xl border border-slate-200 bg-white p-3"><p className="text-sm font-bold">{org.name}</p><p className="mt-1 text-xs text-slate-500">{org.orgType.replace(/_/g, ' ')}</p></div>)}</div>}</CardContent>
+            </Card>
+
+            <Card>
               <CardHeader>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
@@ -1399,34 +1450,35 @@ export default function AdminDashboardPage() {
                 <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-4 text-xs">
                   <p className="font-semibold text-slate-500">Primary Database</p>
                   <p className="mt-1 text-base font-extrabold text-slate-900">
-                    {health?.database === 'connected' ? 'Connected' : 'Active'}
+                    {health?.database === 'connected' ? 'Connected' : health?.database === 'unreachable' ? 'Unreachable' : 'Not checked'}
                   </p>
-                  <p className="mt-1 text-slate-500">All records online</p>
+                  <p className="mt-1 text-slate-500">Supabase Postgres connection</p>
                 </div>
                 <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-4 text-xs">
                   <p className="font-semibold text-slate-500">Sync &amp; Background Services</p>
                   <p className="mt-1 text-base font-extrabold text-slate-900">
-                    {health?.redis === 'connected' ? 'Operational' : 'Ready'}
-                    {health?.redisLatencyMs ? ` (${health.redisLatencyMs}ms)` : ''}
+                    {health?.redis === 'connected' ? 'Operational' : health?.redis === 'unreachable' ? 'Unreachable' : 'Not configured'}
                   </p>
                   <p className="mt-1 text-slate-500">Real-time sync active</p>
                 </div>
                 <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-4 text-xs">
                   <p className="font-semibold text-slate-500">Project File Storage</p>
                   <p className="mt-1 text-base font-extrabold text-slate-900">
-                    {health?.r2Storage ? 'Available' : 'Ready'}
+                    {providerStatus?.providers.CLOUDFLARE_R2 === 'LIVE' ? 'Available' : 'Not configured'}
                   </p>
                   <p className="mt-1 text-slate-500">Encrypted file uploads</p>
                 </div>
                 <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-4 text-xs">
                   <p className="font-semibold text-slate-500">Portfolio Verification</p>
                   <p className="mt-1 text-base font-extrabold text-emerald-700">
-                    {health?.ledgerIntegrityValid !== false ? 'Verified' : 'Needs Review'} ({health?.ledgerBlocks ?? 0} records)
+                    {health?.ledgerIntegrityValid ? 'Verified' : health ? 'Needs Review' : 'Not checked'} ({health?.ledgerBlockCount ?? 0} blocks)
                   </p>
                   <p className="mt-1 text-slate-500">Tamper-evident project records</p>
                 </div>
               </CardContent>
             </Card>
+
+            <p className="rounded-xl border border-violet-200 bg-violet-50 p-4 text-xs leading-relaxed text-violet-950">SparkTrack stores operational records in Supabase Postgres schemas such as <code className="font-bold">core</code>, <code className="font-bold">evidence</code>, and <code className="font-bold">analytics</code>. In Supabase Table Editor, enable those schemas in the schema selector; the default <code className="font-bold">public</code> view does not show them.</p>
 
             {/* THIRD-PARTY PROVIDER INTEGRATION STATUS */}
             {providerStatus && (
@@ -1688,6 +1740,7 @@ export default function AdminDashboardPage() {
             </Card>
           </div>
         )}
+      </div>
       </div>
     </main>
   );
