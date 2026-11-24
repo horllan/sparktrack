@@ -272,6 +272,9 @@ export class PartnerService implements OnModuleInit, OnModuleDestroy {
       evidenceReference?: string;
       allowPublicPortfolio?: boolean;
       allowPartnerTalentDiscovery?: boolean;
+      autoEnrolPilot?: boolean;
+      cohortId?: string;
+      pilotCohortTitle?: string;
     },
   ) {
     const organisationId = this.assertOrganisationId(user);
@@ -282,6 +285,23 @@ export class PartnerService implements OnModuleInit, OnModuleDestroy {
         ...payload,
       });
 
+      let cohortEnrolment: {
+        enrolmentId: string;
+        cohortId: string;
+        cohortTitle: string;
+        newlyEnrolled: boolean;
+      } | null = null;
+
+      if (payload.autoEnrolPilot || payload.cohortId) {
+        cohortEnrolment = await partnerQueries.enrolInPilotCohort(this.db, {
+          organisationId,
+          learnerId: res.learnerId,
+          enrolledBy: user.id,
+          cohortId: payload.cohortId,
+          cohortTitle: payload.pilotCohortTitle,
+        });
+      }
+
       const webOrigin = this.getWebOrigin();
       const response = {
         externalLearnerId: res.externalLearnerId,
@@ -291,6 +311,7 @@ export class PartnerService implements OnModuleInit, OnModuleDestroy {
         allowPublicPortfolio: res.allowPublicPortfolio,
         portfolioUrl: res.publicShareToken ? `${webOrigin}/p/${res.publicShareToken}` : null,
         embedUrl: res.publicShareToken ? `${webOrigin}/embed/portfolio/${res.publicShareToken}` : null,
+        cohortEnrolment,
       };
 
       await governanceQueries
@@ -587,6 +608,11 @@ export class PartnerService implements OnModuleInit, OnModuleDestroy {
   async listWebhooks(user: AuthUser) {
     const organisationId = this.assertOrganisationId(user);
     return partnerQueries.listWebhookEndpoints(this.db, organisationId);
+  }
+
+  async listCohorts(user: AuthUser) {
+    const organisationId = this.assertOrganisationId(user);
+    return partnerQueries.listCohorts(this.db, organisationId);
   }
 
   async deleteWebhook(user: AuthUser, endpointId: string) {

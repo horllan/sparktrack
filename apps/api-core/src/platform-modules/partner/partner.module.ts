@@ -46,6 +46,9 @@ const UpsertPartnerLearnerSchema = z.object({
   evidenceReference: z.string().max(200).optional(),
   allowPublicPortfolio: z.boolean().optional().default(true),
   allowPartnerTalentDiscovery: z.boolean().optional().default(false),
+  autoEnrolPilot: z.boolean().optional().default(false),
+  cohortId: z.string().uuid().optional(),
+  pilotCohortTitle: z.string().min(3).max(160).optional(),
 });
 
 const SubmitPartnerEvidenceSchema = z.object({
@@ -187,6 +190,13 @@ class PartnerController {
   @ApiOperation({ summary: 'List registered outbound webhook endpoints for this organisation' })
   listWebhooks(@CurrentUser() user: AuthUser) {
     return this.partner.listWebhooks(user);
+  }
+
+  @Get('cohorts')
+  @Scopes('intelligence:read')
+  @ApiOperation({ summary: 'List active programme and pilot cohorts for this partner organisation' })
+  listCohorts(@CurrentUser() user: AuthUser) {
+    return this.partner.listCohorts(user);
   }
 
   @Delete('webhooks/:endpointId')

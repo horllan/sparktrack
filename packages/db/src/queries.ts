@@ -2903,6 +2903,163 @@ export const partnerQueries = {
     });
   },
 
+  async enrolInPilotCohort(
+    db: Db,
+    p: {
+      organisationId: string;
+      learnerId: string;
+      enrolledBy: string;
+      cohortId?: string;
+      cohortTitle?: string;
+    },
+  ) {
+    return db.transaction().execute(async (trx) => {
+      let cohortId = p.cohortId;
+      let resolvedTitle = p.cohortTitle?.trim() || 'SparkTrack Pilot Cohort 2026';
+
+      if (cohortId) {
+        const found = await sql<{ id: string; title: string }>`
+          SELECT id, title
+          FROM core.programme_cohorts
+          WHERE id = ${cohortId}::uuid AND is_active = TRUE
+          LIMIT 1
+        `.execute(trx);
+        if (!found.rows[0]) return null;
+        resolvedTitle = found.rows[0].title;
+      } else {
+        const existing = await sql<{ id: string; title: string }>`
+          SELECT id, title
+          FROM core.programme_cohorts
+          WHERE organisation_id = ${p.organisationId}::uuid
+            AND is_active = TRUE
+            AND title = ${resolvedTitle}
+          ORDER BY created_at DESC
+          LIMIT 1
+        `.execute(trx);
+
+        if (existing.rows[0]) {
+          cohortId = existing.rows[0].id;
+          resolvedTitle = existing.rows[0].title;
+        } else {
+          const created = await sql<{ id: string }>`
+            INSERT INTO core.programme_cohorts (
+              organisation_id,
+              title,
+              description,
+              programme_type,
+              start_date,
+              end_date,
+              max_capacity,
+              price_ngn,
+              price_usd,
+              is_active
+            )
+            VALUES (
+              ${p.organisationId}::uuid,
+              ${resolvedTitle},
+              'Free Pilot Cohort for testing and onboarding interested candidates from SparkTrack Training.',
+              'ONLINE_COHORT'::core.programme_type,
+              CURRENT_DATE,
+              (CURRENT_DATE + INTERVAL '90 days')::date,
+              200,
+              0,
+              0,
+              TRUE
+            )
+            RETURNING id
+          `.execute(trx);
+          cohortId = created.rows[0]!.id;
+        }
+      }
+
+      const existingEnrolment = await sql<{ id: string }>`
+        SELECT id
+        FROM core.cohort_enrolments
+        WHERE learner_id = ${p.learnerId}::uuid AND cohort_id = ${cohortId}::uuid
+        LIMIT 1
+      `.execute(trx);
+
+      if (existingEnrolment.rows[0]) {
+        return {
+          enrolmentId: existingEnrolment.rows[0].id,
+          cohortId,
+          cohortTitle: resolvedTitle,
+          newlyEnrolled: false,
+        };
+      }
+
+      const ins = await sql<{ id: string }>`
+        INSERT INTO core.cohort_enrolments (
+          learner_id,
+          cohort_id,
+          enrolled_by,
+          enrolment_status,
+          payment_provider,
+          payment_reference,
+          payment_amount,
+          payment_currency
+        )
+        VALUES (
+          ${p.learnerId}::uuid,
+          ${cohortId}::uuid,
+          ${p.enrolledBy}::uuid,
+          'ACTIVE'::core.enrolment_status,
+          'INSTITUTIONAL_INVOICE'::core.payment_provider,
+          ${'PILOT-' + randomUUID().replace(/-/g, '').slice(0, 12).toUpperCase()},
+          0,
+          'NGN'
+        )
+        RETURNING id
+      `.execute(trx);
+
+      await sql`
+        UPDATE core.programme_cohorts
+        SET current_enrolment_count = current_enrolment_count + 1,
+            updated_at = NOW()
+        WHERE id = ${cohortId}::uuid
+      `.execute(trx);
+
+      return {
+        enrolmentId: ins.rows[0]!.id,
+        cohortId,
+        cohortTitle: resolvedTitle,
+        newlyEnrolled: true,
+      };
+    });
+  },
+
+  async listCohorts(db: Db, organisationId: string) {
+    const r = await sql<{
+      id: string;
+      title: string;
+      programme_type: string;
+      start_date: string;
+      end_date: string;
+      max_capacity: number;
+      current_enrolment_count: number;
+      price_ngn: number | null;
+      is_active: boolean;
+    }>`
+      SELECT id, title, programme_type::text, start_date::text, end_date::text,
+             max_capacity, current_enrolment_count, price_ngn, is_active
+      FROM core.programme_cohorts
+      WHERE organisation_id = ${organisationId}::uuid
+      ORDER BY created_at DESC
+      LIMIT 50
+    `.execute(db);
+    return r.rows.map((row) => ({
+      id: row.id,
+      title: row.title,
+      programmeType: row.programme_type,
+      startDate: row.start_date,
+      endDate: row.end_date,
+      maxCapacity: row.max_capacity,
+      currentEnrolmentCount: row.current_enrolment_count,
+      priceNgn: row.price_ngn,
+      isActive: row.is_active,
+    }));
+  },
+
   async resolveExternalLearner(db: Db, organisationId: string, externalLearnerId: string) {
     const r = await sql<{
       learner_id: string;
