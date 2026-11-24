@@ -622,7 +622,8 @@ export class AuthPlatformService {
   }
 
   private getAdminSecret(): string {
-    const secret = this.config.get<string>('ADMIN_REGISTRATION_SECRET')?.trim();
+    const raw = this.config.get<string>('ADMIN_REGISTRATION_SECRET')?.trim() ?? '';
+    const secret = raw.replace(/^["']|["']$/g, '').trim();
     if (!secret || secret.startsWith('REPLACE_WITH') || Buffer.byteLength(secret, 'utf8') < 32) {
       throw new ServiceUnavailableException(
         'ADMIN_REGISTRATION_SECRET must be explicitly configured with at least 32 bytes.',
