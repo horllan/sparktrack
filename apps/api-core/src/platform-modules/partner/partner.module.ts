@@ -75,8 +75,12 @@ const SubmitPartnerRubricSchema = z.object({
     .array(
       z.object({
         signal: BehaviouralSignalSchema,
-        intensity: z.number().min(0).max(1),
-        note: z.string().max(500).optional(),
+        intensity: z
+          .number()
+          .min(0)
+          .max(4)
+          .transform((v) => (v <= 1 ? Math.max(1, Math.min(4, Math.round(v * 4))) : Math.round(v))),
+        note: z.string().max(280).optional(),
       }),
     )
     .min(1)
